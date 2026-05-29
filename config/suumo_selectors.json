@@ -1,0 +1,18 @@
+{
+  "_comment": "SUUMOのセレクター設定。実際の管理画面のHTMLに合わせて修正してください。",
+  "_howto": "Chromeで管理画面を開き、入力欄を右クリック→「検証」→該当要素のid/name属性を確認してください",
+
+  "物件名":    "input[name='property_name'], #bukken_name, input[id*='bukken'][id*='name']",
+  "住所":      "input[name='address'], input[id*='address']",
+  "賃料":      "input[name='rent'], input[name='chinryo'], input[id*='rent'], input[id*='price']",
+  "面積":      "input[name='area'], input[name='menseki'], input[id*='area']",
+  "階数":      "input[name='floor'], input[name='kaisuu'], input[id*='floor']",
+  "キャッチコピー": "input[name='catch'], input[name='catch_copy'], textarea[name='catch']",
+  "物件説明":  "textarea[name='description'], textarea[name='setsumei'], textarea[id*='description']",
+
+  "写真input": "input[type='file']",
+  "写真ボタン": "button[class*='upload'], input[type='button'][value*='写真'], a[class*='photo']",
+  "写真キャプション_prefix": "input[name*='caption'], input[id*='caption']",
+
+  "保存ボタン": "input[type='submit'][value*='保存'], input[type='submit'][value*='登録'], button:has-text('保存'), button:has-text('更新')"
+}

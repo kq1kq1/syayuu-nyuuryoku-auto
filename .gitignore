@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.spec
+
+# 実行ファイル
+*.exe
+
+# Chromeデバッグプロファイル（大容量・個人情報含む）
+chrome_debug_profile/
+
+# Excelテンプレート・写真フォルダ（個人情報含む）
+*.xlsx
+*.xls
+同仕様モデルハウス/
+物件写真/
+
+# 配布用zip（ビルド成果物・大容量）
+haifu.zip
+
+# ログ
+error.log
+*.log
+
+# URL設定（SUUMOトークン等を含む・ローカルのみ）
+config/urls.txt
+haifu/urls.txt
+
+# Claude内部ファイル
+.claude/
+
+# 開発メモ（社内向け・公開しない）
+引継ぎ.md
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

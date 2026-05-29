@@ -1,0 +1,10 @@
+# URLs to open in Chrome on startup. One URL per line.
+# Lines starting with # are ignored (comments).
+#
+# HOW TO USE:
+#   1. Copy this file to "urls.txt" in the same folder.
+#   2. Replace YOUR_SUUMO_TOKEN_HERE with the real SUUMO token.
+https://sys.arcs.jp/login.html
+https://www.pitat-cloud.com/login/
+https://manager.suumo.jp/chukai/login/?path=YOUR_SUUMO_TOKEN_HERE
+https://kodate.homes.co.jp/manager/index.php?

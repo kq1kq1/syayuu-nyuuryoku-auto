@@ -1,0 +1,18 @@
+{
+  "_comment": "HOMESのセレクター設定。実際の管理画面のHTMLに合わせて修正してください。",
+  "_howto": "Chromeで管理画面を開き、入力欄を右クリック→「検証」→該当要素のid/name属性を確認してください",
+
+  "物件名":    "input[name='bukken_name'], input[id='bukken_name'], input[id*='bukken'][id*='name']",
+  "住所":      "input[name='address'], input[id*='address']",
+  "賃料":      "input[name='chinryo'], input[name='price'], input[id*='chinryo']",
+  "面積":      "input[name='menseki'], input[id*='menseki']",
+  "階数":      "input[name='kaisuu'], input[id*='kaisuu']",
+  "キャッチコピー": "input[name='catch_copy'], textarea[name='catch_copy']",
+  "物件説明":  "textarea[name='setsumei'], textarea[name='description']",
+
+  "写真input": "input[type='file']",
+  "写真ボタン": "button[class*='photo'], button[class*='image']",
+  "写真キャプション_prefix": "input[name*='caption'], input[name*='gazo_comment']",
+
+  "保存ボタン": "input[type='submit'], button:has-text('保存'), button:has-text('登録'), button:has-text('更新')"
+}
