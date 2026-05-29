@@ -52,6 +52,16 @@ Excelに用意したデータをもとに、Playwright（Python）が起動済�
 - `社有入力テンプレート.xlsx` … 入力データ。物件ごとに編集する。
 - `物件写真/` … 写真フォルダ（`同仕様モデルハウス/`, `ホームズ写真/` など）。
 
+### 5. 起動URL設定（config/urls.txt）
+Chrome起動時に開くURL（SUUMOのトークン付きURLを含む）は、セキュリティのため
+リポジトリには含めず `config/urls.txt` に分離しています（`.gitignore` 済み）。
+
+- **配布版**: `haifu/urls.txt` に実URLが入った状態で配布されるので、受け取った人は設定不要。
+- **ソース版（clone直後）**: `config/urls.txt` が無いので、初回に作成が必要（手順は下記）。
+  - `start_chrome.bat` を実行すると、ファイルが無ければ自動で
+    `config/urls.example.txt` からコピーしてメモ帳を開きます。
+    `YOUR_SUUMO_TOKEN_HERE` を実際のSUUMOトークンに書き換えて保存 → 再実行。
+
 ---
 
 ## セットアップ手順
@@ -81,6 +91,10 @@ python -m venv venv
 
 # 依存インストール
 pip install -r requirements.txt
+
+# 起動URLを設定（トークンはgit管理外なので手動で用意）
+copy config\urls.example.txt config\urls.txt
+notepad config\urls.txt   # YOUR_SUUMO_TOKEN_HERE を実トークンに書き換えて保存
 ```
 
 `requirements.txt`:
@@ -91,6 +105,7 @@ Pillow==10.3.0
 ```
 
 > Playwright本体のブラウザ（chromium）は **不要** です。既存のChromeにCDP接続するため。
+> `config/urls.txt` は `.gitignore` 済み。作り忘れても `start_chrome.bat` が初回に自動生成＋メモ帳を開きます。
 
 ---
 
@@ -169,6 +184,7 @@ syayuu_nyuuryoku_auto/
 | `python._pth` が編集できない | 同上（同期ソフトのロック） | デスクトップ等ローカルへ移動 |
 | Pythonダウンロード失敗 | ネット制限・プロキシ・アンチウイルス | 別ネットワーク / Defender確認 |
 | `python.exe` が消える | Windows Defenderが隔離 | セキュリティ→保護の履歴→許可／除外フォルダ追加 |
+| Chromeは開くがサイトが出ない（clone直後） | `config/urls.txt` 未作成 | `start_chrome.bat` 実行で自動生成→メモ帳が開くのでトークン記入して再実行 |
 | `Chrome接続エラー` / 接続失敗 | Chromeをポート9222で起動していない | 先に `start_chrome.bat`（配布版は「1.最初に...」）を実行 |
 | ログイン画面のまま入力されない | プロファイル未ログイン | 起動Chromeで各サイトに手動ログイン |
 | Excel書き込みエラー | Excelを開いたまま | Excelを閉じてから再実行 |
