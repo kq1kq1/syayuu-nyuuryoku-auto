@@ -20,16 +20,17 @@ chrome_debug_profile/
 同仕様モデルハウス/
 物件写真/
 
-# 配布用zip（ビルド成果物・大容量）
-haifu.zip
+# ビルド成果物（同梱Python約90MB・zip）
+dist/
+.build_cache/
 
 # ログ
 error.log
 *.log
 
 # URL設定（SUUMOトークン等を含む・ローカルのみ）
+urls.txt
 config/urls.txt
-haifu/urls.txt
 
 # Claude内部ファイル
 .claude/

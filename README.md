@@ -30,17 +30,24 @@ Excelに用意したデータをもとに、Playwright（Python）が起動済�
 
 ## 必要なもの（新しいマシンで使うとき）
 
-新しいPCで使い始めるときは、以下を順番にそろえてください。
-
 ### 1. Google Chrome
-- 通常のChromeがインストールされていればOK。
+通常のChromeがインストールされていればOK。**Edgeでは動きません。**
 
-### 2. Python 環境（2通り）
+`1.最初にダブルクリック(ブラウザが開く).bat` が以下の順に自動で探します。
+
+1. `%ProgramFiles%\Google\Chrome\Application\chrome.exe`
+2. `%ProgramFiles(x86)%\...`
+3. `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`（ユーザー領域インストール）
+4. レジストリ `App Paths`（HKLM → HKCU）
+
+### 2. Python
 
 | 方式 | 対象 | Pythonインストール |
 |------|------|----------------|
-| **A. 配布版（推奨・非エンジニア向け）** | 営業担当など | 不要（`【最初だけ】セットアップ.bat` が埋め込みPythonを自動DL） |
-| **B. ソース版（開発者・自分用）** | コードを触る人 | システムにPython 3.11+ を手動インストール |
+| **A. 配布版（非エンジニア向け）** | 営業担当など | **不要**。zipに動くPythonが同梱されている |
+| **B. ソース版（開発者・自分用）** | コードを触る人 | Python 3.13 を python.org からインストール |
+
+起動batは「同梱の `python\pythonw.exe` → `pyw.exe`（pyランチャー）→ PATH上の `pythonw.exe`」の順に自動判別するので、**同じフォルダが配布先PCでも開発PCでもそのまま動きます。**
 
 ### 3. 各サイトへのログイン（初回のみ・全マシン共通）
 ブラウザ起動batが専用プロファイル（`%LOCALAPPDATA%\syayuu_nyuuryoku_chrome`）でChromeを開きます。
@@ -49,18 +56,18 @@ Excelに用意したデータをもとに、Playwright（Python）が起動済�
 > ⚠️ 新しいマシンでは、このプロファイルが空なので **4サイトすべてに1回ずつ手動ログインが必要** です。
 
 ### 4. Excelテンプレートと写真
-- `社有入力テンプレート.xlsx` … 入力データ。物件ごとに編集する。
+- `社有入力テンプレート.xlsx` … 入力データ。アプリの「Excelテンプレート作成」ボタンで生成できる。
 - `物件写真/` … 写真フォルダ（`同仕様モデルハウス/`, `ホームズ写真/` など）。
 
-### 5. 起動URL設定（config/urls.txt）
+### 5. 起動URL設定（urls.txt）
 Chrome起動時に開くURL（SUUMOのトークン付きURLを含む）は、セキュリティのため
-リポジトリには含めず `config/urls.txt` に分離しています（`.gitignore` 済み）。
+リポジトリには含めず `urls.txt` に分離しています（`.gitignore` 済み）。
 
-- **配布版**: `haifu/urls.txt` に実URLが入った状態で配布されるので、受け取った人は設定不要。
-- **ソース版（clone直後）**: `config/urls.txt` が無いので、初回に作成が必要（手順は下記）。
-  - `start_chrome.bat` を実行すると、ファイルが無ければ自動で
-    `config/urls.example.txt` からコピーしてメモ帳を開きます。
-    `YOUR_SUUMO_TOKEN_HERE` を実際のSUUMOトークンに書き換えて保存 → 再実行。
+起動batは `urls.txt` → `config\urls.txt` の順に探すので、どちらに置いてもOKです。
+無い場合は `urls.example.txt` から自動コピーしてメモ帳を開くので、
+`YOUR_SUUMO_TOKEN_HERE` を実トークンに書き換えて保存 → 再実行してください。
+
+> 配布zipのビルド時に `urls.txt` が存在すれば同梱されるため、受け取った人の設定は不要になります。
 
 ---
 
@@ -68,57 +75,87 @@ Chrome起動時に開くURL（SUUMOのトークン付きURLを含む）は、セ
 
 ### A. 配布版（非エンジニア向け）
 
-> **重要: Dropbox / OneDrive の中では実行しないでください。**
-> 同期がファイルをロックしてセットアップが失敗します。**デスクトップなどローカルフォルダに置いて**から実行してください。
+配布zipには **tkinter入りのPythonランタイムと必要ライブラリがすべて同梱**されています。
+そのため受け取った人の側では、**インターネット接続・Pythonインストール・管理者権限のいずれも不要**です。
+`【最初だけ】セットアップ.bat` は廃止しました。
 
-1. 配布フォルダ（`haifu`）を **デスクトップ** に置く
-2. `【最初だけ】セットアップ.bat` をダブルクリック
-   - 埋め込みPython・pip・playwright・openpyxl を自動インストール
-   - 失敗してもウィンドウは閉じません。エラーは画面と `setup.log` に残ります
-3. 完了したら、以降は下記「使い方」へ
+> Dropbox / OneDrive の中は避けて、**デスクトップなどローカルフォルダ**に展開してください（同期がファイルをロックします）。
 
-うまくいかないときは `setup.log` を確認してください。よくある原因は [トラブルシューティング](#トラブルシューティング) 参照。
+1. `社有物件自動入力Bot.zip` を **デスクトップ** に展開
+2. `1.最初にダブルクリック(ブラウザが開く).bat`
+3. `2.次にダブルクリック(自動入力アプリが起動する).bat`
+
+同梱の `はじめにお読みください.txt` に、この手順とよくあるトラブルを日本語で書いてあります。
 
 ### B. ソース版（開発者・自分用）
 
 ```powershell
 git clone https://github.com/kq1kq1/syayuu-nyuuryoku-auto.git
 cd syayuu-nyuuryoku-auto
-
-# 仮想環境（任意・推奨）
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# 依存インストール
 pip install -r requirements.txt
 
 # 起動URLを設定（トークンはgit管理外なので手動で用意）
-copy config\urls.example.txt config\urls.txt
-notepad config\urls.txt   # YOUR_SUUMO_TOKEN_HERE を実トークンに書き換えて保存
+copy urls.example.txt urls.txt
+notepad urls.txt   # YOUR_SUUMO_TOKEN_HERE を実トークンに書き換えて保存
 ```
 
-`requirements.txt`:
-```
-playwright==1.44.0
-openpyxl==3.1.2
-Pillow==10.3.0
-```
+あとは配布版と同じ2つのbatをダブルクリックするだけです（システムのPythonが自動で使われます）。
 
 > Playwright本体のブラウザ（chromium）は **不要** です。既存のChromeにCDP接続するため。
-> `config/urls.txt` は `.gitignore` 済み。作り忘れても `start_chrome.bat` が初回に自動生成＋メモ帳を開きます。
+> `playwright==1.44.0` は Python 3.13 用のwheelが無くインストールに失敗するため、`1.62.0` に上げてあります。
+> `Pillow` はコード上で未使用だったため `requirements.txt` から外しました。
+
+### C. 配布zipのビルド（開発者のみ）
+
+```bash
+python build_haifu.py
+```
+
+`dist/社有物件自動入力Bot.zip`（約53MB）が出来上がります。これを渡してください。
+
+やっていること:
+
+1. python.org から `python-3.13.4-embed-amd64.zip` をDL・展開（`.build_cache/` にキャッシュ）
+2. **埋め込み版には tkinter が入っていない**ので、ローカルの Python 3.13.4 から移植
+   `_tkinter.pyd` / `tcl86t.dll` / `tk86t.dll` / **`zlib1.dll`** / `tcl/` / `Lib/tkinter/`
+3. `python313._pth` を書き換え（`import site` 有効化 + `Lib` 追加）
+4. pip を入れて `requirements.txt` をインストール
+5. アプリ本体と `urls.txt` をコピーして zip 化
+
+```bash
+python build_haifu.py --clean        # python/ を作り直す
+python build_haifu.py --no-zip       # zipを作らずフォルダだけ
+python build_haifu.py --with-photos  # 物件写真/ も同梱する（サイズ注意）
+```
+
+**入力データの同梱**（リポジトリ直下にあれば自動で入る）
+
+| ファイル | 挙動 |
+|---|---|
+| `urls.txt` / `config/urls.txt` | あれば同梱 → 受け取った人のトークン設定が不要になる |
+| `社有入力テンプレート.xlsx` | あれば同梱。**無いと警告が出る** |
+| `物件写真/` | `--with-photos` を付けたときだけ同梱 |
+
+> ⚠️ アプリの `_create_template()`（[main.py:663](main.py:663)）は **どのボタンにも配線されていません**。
+> そのため受け取った人はアプリ内でテンプレートを作れません。
+> **`社有入力テンプレート.xlsx` を必ず同梱してください。**
+> （既存テンプレートを上書きする事故を避けるため、配線は意図的に見送っています）
+
+> `zlib1.dll` を忘れると `ImportError: DLL load failed while importing _tkinter` になります。
+> ランタイムはいったん `%TEMP%` で組み立ててから `dist/` へ移動します。深い階層で `pip install` すると
+> Windowsのパス長制限（260文字）に当たって `OSError` で失敗するためです。
+> ビルドにはネット接続が必要ですが、**配布先では不要**です。
 
 ---
 
 ## 使い方（全マシン共通）
 
 1. **Chromeを起動**（デバッグポート9222 + 各サイトを自動で開く）
-   - 配布版: `1.最初にダブルクリック(ブラウザが開く).bat`
-   - ソース版: `start_chrome.bat`
+   - `1.最初にダブルクリック(ブラウザが開く).bat`
    - ⚠️ 初回はここで各サイトに手動ログイン
 2. **入力したい物件の編集ページ** を、開いたChromeで表示する
 3. **アプリを起動**
-   - 配布版: `2.次にダブルクリック(自動入力アプリが起動する).bat`
-   - ソース版: `run.bat`（または `python main.py`）
+   - `2.次にダブルクリック(自動入力アプリが起動する).bat`
 4. 起動時ダイアログで **建築確認番号** と **物件価格** を入力
 5. **物件タイプ**（新築 / 中古）を選択
 6. 写真フォルダを確認（中古は「参照...」で撮影写真フォルダを選び「連番リネーム」）
@@ -147,53 +184,70 @@ Pillow==10.3.0
 
 ## ファイル構成
 
+ソースの正は **リポジトリ直下だけ**です。配布フォルダは `build_haifu.py` が組み立てるので、
+同じ `.py` を2箇所で管理する必要はありません。
+
 ```
 syayuu_nyuuryoku_auto/
 ├── main.py                    # tkinter GUI + 実行エントリポイント
 ├── excel_reader.py            # Excelからデータ読み込み
 ├── make_template.py           # Excelテンプレート生成
 ├── add_chuko_sheets.py        # 中古シート追加
-├── 社有入力テンプレート.xlsx     # 入力データ（物件ごとに編集）
-├── 物件写真/                   # 写真フォルダ群
 ├── automation/
 │   ├── base.py                # Chrome接続・共通操作の基底クラス
 │   ├── suumo.py               # SUUMO自動入力
 │   ├── homes.py               # ホームズ自動入力
 │   ├── pitakura.py            # ピタクラ自動入力
-│   └── skyyers.py             # スカイヤーズ自動入力
+│   └── skyyers.py             # 自社サイト自動入力
 │
-├── start_chrome.bat           # [ソース版] Chrome起動（デバッグポート9222）
-├── run.bat                    # [ソース版] アプリ起動（システムPython）
-├── setup.bat                  # [ソース版] 依存インストール
+├── 1.最初にダブルクリック(ブラウザが開く).bat      # Chrome起動（純ASCII）
+├── 2.次にダブルクリック(自動入力アプリが起動する).bat # アプリ起動（Python自動判別・純ASCII）
+├── はじめにお読みください.txt                      # 配布先向けの日本語手順
+├── urls.example.txt           # 起動URLのひな形
+├── requirements.txt
+├── build_haifu.py             # 配布zipのビルド（開発者専用）
 │
-└── haifu/                     # [配布版] 非エンジニアに渡すパッケージ
-    ├── 【最初だけ】セットアップ.bat            # 埋め込みPython自動セットアップ
-    ├── 1.最初にダブルクリック(ブラウザが開く).bat
-    ├── 2.次にダブルクリック(自動入力アプリが起動する).bat
-    └── （main.py等のコピー一式）
+├── 社有入力テンプレート.xlsx     # 入力データ（gitignore）
+├── 物件写真/                   # 写真フォルダ群（gitignore）
+├── urls.txt                   # 実URL・SUUMOトークン（gitignore）
+├── config/                    # 開発メモ用セレクタJSON（コードからは未参照）
+├── .build_cache/              # DL済みPython・get-pip のキャッシュ（gitignore）
+└── dist/                      # ビルド成果物（gitignore）
+    ├── 社有物件自動入力Bot/
+    │   ├── python/            # tkinter込み同梱ランタイム
+    │   └── （アプリ一式）
+    └── 社有物件自動入力Bot.zip  # ← これを配布する
 ```
 
 ---
 
 ## トラブルシューティング
 
+### 配布先PCで
+
 | 症状 | 原因 | 対処 |
 |------|------|------|
-| セットアップbatが一瞬で消える | 古いbat / 文字コード問題 | 最新の配布版を使う。cmdにドラッグ＆ドロップ実行で原因確認 |
-| `No module named pip` | Dropbox/OneDriveがファイルをロック | フォルダを**デスクトップに移動**して再実行 |
-| `python._pth` が編集できない | 同上（同期ソフトのロック） | デスクトップ等ローカルへ移動 |
-| Pythonダウンロード失敗 | ネット制限・プロキシ・アンチウイルス | 別ネットワーク / Defender確認 |
-| `python.exe` が消える | Windows Defenderが隔離 | セキュリティ→保護の履歴→許可／除外フォルダ追加 |
-| Chromeは開くがサイトが出ない（clone直後） | `config/urls.txt` 未作成 | `start_chrome.bat` 実行で自動生成→メモ帳が開くのでトークン記入して再実行 |
-| `Chrome接続エラー` / 接続失敗 | Chromeをポート9222で起動していない | 先に `start_chrome.bat`（配布版は「1.最初に...」）を実行 |
+| `no Python runtime found` | zipの展開が不完全で `python/` が無い | zipをもう一度、フォルダごと展開する |
+| `this Python runtime is missing required modules` | 同梱ランタイムのビルド不備 | 開発者が `python build_haifu.py --clean` で作り直して再配布 |
+| `ERROR: Google Chrome was not found` | Chrome未インストール / Edgeのみ | Chromeをインストールする |
+| Chromeは開くがサイトが出ない | `urls.txt` 未作成 | 「1.最初に...」実行で自動生成→メモ帳が開くのでトークン記入して再実行 |
+| `Chrome接続エラー` / 接続失敗 | Chromeをポート9222で起動していない | 先に「1.最初に...」を実行。順番を守る |
 | ログイン画面のまま入力されない | プロファイル未ログイン | 起動Chromeで各サイトに手動ログイン |
 | Excel書き込みエラー | Excelを開いたまま | Excelを閉じてから再実行 |
 
-### Windows Defender に隔離されたとき
-1. 「Windows セキュリティ」→「ウイルスと脅威の防止」→「保護の履歴」
-2. 隔離された `python.exe` / `python_embed.zip` を選び **許可 → 復元**
-3. 「除外の追加」→「フォルダー」で、アプリを置いたフォルダを除外に追加
-4. もう一度セットアップを実行
+> ダブルクリックしても無反応、という症状は起きません。
+> `2.次にダブルクリック...bat` が `pythonw.exe`（コンソール無し）で起動する前に
+> `import tkinter, openpyxl, playwright.sync_api` をコンソール側で先に検査し、
+> 失敗したら原因を表示して `pause` で止まるようにしてあります。
+
+### ビルド時（開発者PC）
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| `ダウンロードに失敗しました` | プロキシ / ファイアウォール / アンチウイルス | 別ネットワークで実行。DL済みなら `.build_cache/` が再利用される |
+| `このPythonには tkinter がありません` | 埋め込み版や tcl/tk 無しPythonで実行した | python.org の公式インストーラ版Pythonで実行する |
+| `_tkinter.pyd が ... にありません` | 移植元Pythonのインストールが不完全 | インストーラで「tcl/tk and IDLE」を有効にして修復インストール |
+| `ライブラリのインストールに失敗` + `OSError` | Windowsのパス長制限 | リポジトリを浅い階層（`C:\dev\...` など）に置く |
 
 ---
 
@@ -211,6 +265,7 @@ syayuu_nyuuryoku_auto/
 
 ## 環境
 
-- OS: Windows 10 / 11
-- Python: 3.11+（配布版は埋め込み3.11.9を自動取得）
-- 主要ライブラリ: playwright, openpyxl, Pillow
+- OS: Windows 10 / 11（64bit）
+- Python: 3.13.4（配布版は同梱。配布先へのインストールは不要）
+- 主要ライブラリ: playwright 1.62.0, openpyxl 3.1.5
+- 配布zipサイズ: 約53MB（展開後 約120MB）

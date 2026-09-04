@@ -345,7 +345,7 @@ class App(tk.Tk):
         footer = tk.Frame(self, bg="#e0e0e0", pady=3)
         footer.pack(fill="x", side="bottom")
         tk.Label(footer,
-                 text="使い方: ①start_chrome.batでChrome起動 → ②SUUMOの物件編集ページを開く → ③入力ボタンをクリック",
+                 text="使い方: ①「1.最初にダブルクリック」でChrome起動 → ②SUUMOの物件編集ページを開く → ③入力ボタンをクリック",
                  font=("Yu Gothic UI", 8), fg="#555", bg="#e0e0e0").pack()
 
     # -------- 物件タイプ --------

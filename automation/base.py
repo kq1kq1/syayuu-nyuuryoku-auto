@@ -7,7 +7,7 @@ from typing import Optional, Callable
 from playwright.sync_api import sync_playwright, Browser, Page, BrowserContext
 
 
-CDP_PORT = 9222  # start_chrome.batで起動するデバッグポート
+CDP_PORT = 9222  # 「1.最初にダブルクリック(ブラウザが開く).bat」で起動するデバッグポート
 
 
 class AutomationBase:
@@ -45,7 +45,7 @@ class AutomationBase:
 
         except Exception as e:
             self.log(f"Chrome接続エラー: {e}")
-            self.log("→ start_chrome.bat でChromeを起動してください")
+            self.log("→ 「1.最初にダブルクリック(ブラウザが開く).bat」でChromeを起動してください")
             return False
 
     def get_current_url(self) -> str:
