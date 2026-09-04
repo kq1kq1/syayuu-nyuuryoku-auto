@@ -19,12 +19,12 @@
     python build_haifu.py               # 通常ビルド（python/ は再利用して高速）
     python build_haifu.py --clean        # python/ を作り直す
     python build_haifu.py --no-zip       # zip を作らずフォルダだけ
-    python build_haifu.py --with-photos  # 物件写真/ も同梱する（サイズ注意）
+    python build_haifu.py --no-photos    # 物件写真/ を同梱しない
 
 同梱されるもの:
     アプリ本体 + 同梱Python + はじめにお読みください.txt
     社有入力テンプレート.xlsx   … あれば（アプリにテンプレート作成ボタンが無いので実質必須）
-    物件写真/                  … --with-photos を付けたときだけ
+    物件写真/                  … 中身ごと同梱（外すなら --no-photos）
 """
 import hashlib
 import os
@@ -305,6 +305,8 @@ def copy_extras(pkg: Path, with_photos: bool) -> None:
 
     photos = ROOT / PHOTO_DIRNAME
     if not photos.exists():
+        if with_photos:
+            log(f"[data] [!] {PHOTO_DIRNAME}/ がありません。写真は同梱されません")
         return
     size_mb = sum(p.stat().st_size for p in photos.rglob("*") if p.is_file()) / 1024 / 1024
     if with_photos:
@@ -312,9 +314,15 @@ def copy_extras(pkg: Path, with_photos: bool) -> None:
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(photos, dst)
-        log(f"[data] {PHOTO_DIRNAME}/ を同梱（{size_mb:.1f} MB）")
+        files = [p for p in photos.rglob("*") if p.is_file()]
+        log(f"[data] {PHOTO_DIRNAME}/ を同梱（{len(files)}ファイル / {size_mb:.1f} MB）")
+        for sub in sorted(p for p in photos.iterdir() if p.is_dir()):
+            n = len([q for q in sub.rglob("*") if q.is_file()])
+            log(f"         {sub.name}/ : {n}ファイル")
+        if not files:
+            log(f"       [!] {PHOTO_DIRNAME}/ は空です。写真が入っているか確認してください")
     else:
-        log(f"[data] {PHOTO_DIRNAME}/ は同梱しません（{size_mb:.1f} MB）。含めるなら --with-photos")
+        log(f"[data] {PHOTO_DIRNAME}/ は同梱しません（{size_mb:.1f} MB）。--no-photos が指定されています")
 
 
 # ============================================================
@@ -323,7 +331,9 @@ def copy_extras(pkg: Path, with_photos: bool) -> None:
 def main() -> None:
     clean = "--clean" in sys.argv
     make_zip = "--no-zip" not in sys.argv
-    with_photos = "--with-photos" in sys.argv
+    # 写真は既定で同梱する。--with-photos を付け忘れて
+    # 写真なしのzipを配ってしまう事故のほうが痛いため。
+    with_photos = "--no-photos" not in sys.argv
 
     log("=" * 60)
     log(f"  {PACKAGE_NAME} 配布パッケージ ビルド")

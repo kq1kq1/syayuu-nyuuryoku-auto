@@ -225,10 +225,12 @@ class App(tk.Tk):
     # -------- ダイアログ --------
 
     def _ask_bukken_info(self, first_time=False):
-        dlg = StartupDialog(self, tatemono_default=(
-            self._tatemono_kakaku.get() if self._tatemono_price() else ""))
+        # 建物価格を前の物件から引き継がない。
+        # 建築確認番号・物件価格は毎回空から入れ直す仕様なので、
+        # 建物価格だけ前回値が残っていると、気づかないまま合計が水増しされる。
+        dlg = StartupDialog(self)
         if dlg.result_kenchu is not None:
-            self._kenchu_bangou.set(dlg.result_kenchu if dlg.result_kenchu else "なし（中古）")
+            self._kenchu_bangou.set(dlg.result_kenchu if dlg.result_kenchu else "なし")
             self._bukken_kakaku.set(str(dlg.result_price))
             self._tatemono_kakaku.set(str(dlg.result_tatemono))
             self._refresh_total_label()
@@ -239,6 +241,8 @@ class App(tk.Tk):
                 if dlg.result_tatemono:
                     self._log(f"建物価格: {dlg.result_tatemono:,}万円 "
                               f"→ 合計 {dlg.result_price + dlg.result_tatemono:,}万円")
+                else:
+                    self._log("建物価格: なし（支払い例は物件価格のみで計算）")
                 self._write_price_to_excel(self._total_price())
         elif first_time:
             self._kenchu_bangou.set("未入力")
@@ -394,6 +398,17 @@ class App(tk.Tk):
         種別専用の列がある行だけ差し替える方式にしている。
         """
         return "土地" if self._bukken_type.get() == "土地" else ""
+
+    def _kenchu_value(self) -> str:
+        """サイトに渡す建築確認番号。表示用の文字列は空文字に正規化する。
+
+        画面には「なし」「未入力」と出すが、そのままサイトに入力すると
+        建築確認番号欄にその文字列が入ってしまう。中古・土地は番号が無いので空で渡す。
+        """
+        value = self._kenchu_bangou.get().strip()
+        if value in ("未入力", "なし", "なし（中古）"):
+            return ""
+        return value
 
     def _tatemono_price(self) -> int:
         """建物価格（万円）。建築条件付き売地でなければ0。"""
@@ -577,7 +592,7 @@ class App(tk.Tk):
             self._log_photo_source("写真", photos, photo_sheet)
             self._log_photo_source("売主コメント", baishuu_photos, baishuu_sheet)
             self._log(f"  レイアウト指定: {len(layout_rows)}行")
-            kenchu = self._kenchu_bangou.get()
+            kenchu = self._kenchu_value()
             # 建築条件付き売地は土地価格＋建物価格の合計でローンを計算する
             price     = self._total_price()
             tatemono  = self._tatemono_price()
@@ -636,6 +651,12 @@ class App(tk.Tk):
                 return
             from excel_reader import read_photos
             chuko      = self._is_chuko()
+            # ホームズだけは正規化せず生の表示値を渡す。
+            # homes.py の「if kenchu_bangou:」ガードが _click_update()（この内容で更新する）を
+            # 内包しており、そのクリックが「画像の編集」ページへの遷移に必須のため、
+            # 空文字を渡すと画像入力まで到達できなくなる。
+            # 土地・中古のホームズは未検証で保留中なので、動いている挙動を変えない。
+            # 直すなら homes.py 側で _click_update() をガードの外に出す必要がある。
             kenchu     = self._kenchu_bangou.get()
             excel_path = self._get_excel_path()
             if chuko:
@@ -700,10 +721,7 @@ class App(tk.Tk):
             if not self._check_inputs():
                 return
             from excel_reader import read_photos
-            kenchu       = self._kenchu_bangou.get()
-            # 表示用の「なし（中古）」は空文字として渡す
-            if kenchu in ("未入力", "なし（中古）"):
-                kenchu = ""
+            kenchu       = self._kenchu_value()
             chuko        = self._is_chuko()
             excel_path   = self._get_excel_path()
             sheet        = "ピタクラ（中古）" if chuko else "ピタクラ"
@@ -740,9 +758,7 @@ class App(tk.Tk):
             chuko        = self._is_chuko()
             excel_path   = self._get_excel_path()
             config       = self._load_config()
-            kenchu       = self._kenchu_bangou.get()
-            if kenchu in ("未入力", "なし（中古）"):
-                kenchu = ""
+            kenchu       = self._kenchu_value()
             photos       = read_photos(excel_path, sheet_name="スカイヤーズ（中古）" if chuko else "スカイヤーズ")
             photo_folder = self._photo_folder.get() if chuko else DEFAULT_PHOTO_FOLDER
             self._log(f"[{'中古' if chuko else '新築'}] スカイヤーズ: {len(photos)}行")

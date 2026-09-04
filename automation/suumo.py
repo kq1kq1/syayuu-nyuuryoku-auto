@@ -489,10 +489,14 @@ class SuumoAutomation(AutomationBase):
                     self.log(f"  ✗ リンク先URL{i}: 入力欄が見つかりません")
 
         # 建築確認番号（DevTools確認済み: name="kenchikuKakuninNo", id="jscKenchikuKakuninNo"）
-        if self._fill("input[name='kenchikuKakuninNo']", kenchu_bangou):
+        # 土地や中古では番号自体が無く、土地の画面には入力欄も存在しない。
+        # 空のまま探すと「入力欄が見つかりません」と誤ったエラーを出すのでスキップする。
+        if not kenchu_bangou:
+            self.log("  - 建築確認番号: スキップ（未入力）")
+        elif self._fill("input[name='kenchikuKakuninNo']", kenchu_bangou):
             self.log(f"  ✓ 建築確認番号: {kenchu_bangou}")
         else:
-            self.log(f"  ✗ 建築確認番号: 入力欄が見つかりません")
+            self.log("  ✗ 建築確認番号: 入力欄が見つかりません")
 
         self.log("=== 基本情報の入力完了 ===")
         return True
