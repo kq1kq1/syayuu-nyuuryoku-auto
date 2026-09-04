@@ -27,6 +27,7 @@
     社有入力テンプレート.xlsx   … あれば（アプリにテンプレート作成ボタンが無いので実質必須）
     物件写真/                  … --with-photos を付けたときだけ
 """
+import hashlib
 import os
 import shutil
 import subprocess
@@ -54,6 +55,22 @@ EXCEL_FILENAME = "社有入力テンプレート.xlsx"
 PHOTO_DIRNAME = "物件写真"
 
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
+
+# ランタイムの検証コード。
+# `import tkinter` だけでは不十分。tkinter は純Pythonモジュールなので、
+# tcl/ ディレクトリ（Tcl/Tkのスクリプト群）が欠けていても import は成功し、
+# 実際にウィンドウを作る段階で初めて落ちる。壊れたzipを「OK」と表示しないよう、
+# 必ず Tk() を生成するところまで確認する。
+TK_CHECK = (
+    "import tkinter, tkinter.ttk, tkinter.filedialog; "
+    "r = tkinter.Tk(); r.withdraw(); "
+    "print('tk', r.tk.call('info', 'patchlevel')); r.destroy()"
+)
+FULL_CHECK = "import openpyxl, playwright.sync_api; " + TK_CHECK
+
+# 同梱ランタイムに入れたライブラリの素性を記録するファイル。
+# requirements.txt を変えたのに python/ を使い回して古いまま配る事故を防ぐ。
+STAMP_NAME = ".requirements.sha256"
 
 # 配布フォルダに入れるアプリ本体。ここに書いたものだけが配布される。
 APP_FILES = [
@@ -189,7 +206,7 @@ def build_runtime(host_base: Path, work: Path) -> None:
         shutil.copytree(src, dst)
         log(f"       {src.name}/ → {dst.relative_to(work)}/")
 
-    verify(work, "import tkinter", "tkinter の移植")
+    verify(work, TK_CHECK, "tkinter の移植")
 
     # ---- pip とライブラリ ----
     log("[3/4] pip をインストール")
@@ -197,12 +214,23 @@ def build_runtime(host_base: Path, work: Path) -> None:
     run_py(work, [str(get_pip), "--no-warn-script-location"], "pip のインストール")
 
     log("[4/4] ライブラリをインストール（requirements.txt）")
+    install_requirements(work)
+
+    verify(work, FULL_CHECK, "同梱ランタイムの動作確認")
+
+
+def requirements_hash() -> str:
     req = ROOT / "requirements.txt"
     if not req.exists():
         die("requirements.txt がありません")
-    run_py(work, ["-m", "pip", "install", "--no-warn-script-location", "-r", str(req)], "ライブラリのインストール")
+    return hashlib.sha256(req.read_bytes()).hexdigest()
 
-    verify(work, "import tkinter, openpyxl, playwright.sync_api", "同梱ランタイムの動作確認")
+
+def install_requirements(runtime: Path) -> None:
+    req = ROOT / "requirements.txt"
+    run_py(runtime, ["-m", "pip", "install", "--no-warn-script-location", "-r", str(req)],
+           "ライブラリのインストール")
+    (runtime / STAMP_NAME).write_text(requirements_hash(), encoding="ascii")
 
 
 def run_py(work: Path, args: list, what: str) -> None:
@@ -225,6 +253,25 @@ def verify(work: Path, code: str, what: str) -> None:
 # ============================================================
 # アプリ本体のコピー
 # ============================================================
+def clean_package(pkg: Path) -> None:
+    """python/ 以外を消してから作り直す。
+
+    上書きコピーだけで済ませると、前回ビルドの残骸がそのまま zip に入る。
+    --with-photos で一度ビルドすると次回以降も写真が残り続ける、
+    消したはずの実データが混入する、といった事故になるため毎回掃除する。
+    """
+    if not pkg.exists():
+        return
+    removed = []
+    for p in pkg.iterdir():
+        if p.name == "python":
+            continue  # 同梱ランタイムは高価なので残す
+        removed.append(p.name)
+        shutil.rmtree(p) if p.is_dir() else p.unlink()
+    if removed:
+        log(f"[app] 前回の成果物を削除: {', '.join(sorted(removed))}")
+
+
 def copy_app(pkg: Path) -> None:
     log("[app] アプリ本体をコピー")
     for name in APP_FILES:
@@ -302,7 +349,13 @@ def main() -> None:
 
     if runtime.exists():
         log("[準備] python/ は既存のものを再利用（作り直すには --clean）")
-        verify(runtime, "import tkinter, openpyxl, playwright.sync_api", "既存ランタイムの確認")
+        # requirements.txt を編集したのに古いライブラリのまま配ってしまう事故を防ぐ。
+        stamp = runtime / STAMP_NAME
+        current = stamp.read_text(encoding="ascii").strip() if stamp.exists() else ""
+        if current != requirements_hash():
+            log("[準備] requirements.txt が変わっています → ライブラリを入れ直します")
+            install_requirements(runtime)
+        verify(runtime, FULL_CHECK, "既存ランタイムの確認")
     else:
         # ランタイムはいったん短いパスで組み立てる。
         # dist が深い階層にあると pip が Windows のパス長制限(260文字)に当たって
@@ -314,6 +367,7 @@ def main() -> None:
             runtime.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(work), str(runtime))
 
+    clean_package(pkg)
     copy_app(pkg)
     copy_extras(pkg, with_photos)
 

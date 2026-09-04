@@ -68,7 +68,11 @@ REM pythonw.exe has no console, so a crash at startup would be totally
 REM invisible - the user double-clicks and nothing happens. main.py also
 REM cannot log it, because the import failure happens before its
 REM try/except. So check the imports with the console interpreter first.
-%PY_CONSOLE% -c "import tkinter, openpyxl, playwright.sync_api"
+REM
+REM Creating a real Tk window matters: "import tkinter" is pure Python and
+REM succeeds even when the tcl/ script directory is missing. Only building a
+REM window proves Tcl/Tk actually loads. withdraw() keeps it off screen.
+%PY_CONSOLE% -c "import tkinter, tkinter.ttk, tkinter.filedialog, openpyxl, playwright.sync_api; r = tkinter.Tk(); r.withdraw(); r.destroy()"
 if errorlevel 1 (
     echo.
     echo ===============================================================

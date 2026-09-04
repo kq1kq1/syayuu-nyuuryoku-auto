@@ -313,6 +313,10 @@ make_site_photo_sheet(wb, 'ピタクラ（中古）', _chuko_all, LIME)
 # ===== Sheet16: スカイヤーズ（中古）=====
 make_site_photo_sheet(wb, 'スカイヤーズ（中古）', _chuko_all, LIME)
 
-out = sys.argv[1] if len(sys.argv) > 1 else '社有入力テンプレート.xlsx'
-wb.save(out)
-print('OK:', out)
+# 保存はスクリプトとして実行されたときだけ行う。
+# ガードが無いと、import しただけでカレントディレクトリに
+# xlsx を書き出してしまい、既存テンプレートを壊す恐れがある。
+if __name__ == '__main__':
+    out = sys.argv[1] if len(sys.argv) > 1 else '社有入力テンプレート.xlsx'
+    wb.save(out)
+    print('OK:', out)
