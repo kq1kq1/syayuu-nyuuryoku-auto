@@ -162,9 +162,30 @@ flat_text = (
 )
 set_row(ws3, 15, 'フラット35ローンご案内\n(loanAnnai)', flat_text, BLUE, height=130)
 
+# 土地の場合だけ内容が変わる項目は D列 に書く（空欄ならB列をそのまま使う）。
+# C列はメモ書きに使っているので、そのさらに右に置く。
+hdr(ws3.cell(1, 4), '土地の場合（空欄なら左と同じ）')
+# D列は値そのものを書く欄なので空にしておく。説明はE列にグレーで置く。
+# （D列にヒント文を書くと、それがそのまま入力値として読まれてしまう）
+for _r, _note in [(3,  '← 土地で金利が違う場合だけ記入'),
+                  (4,  '← 土地で返済期間が違う場合だけ記入'),
+                  (10, '← 土地用の物件(住戸)情報'),
+                  (14, '← 土地用の住宅ローンのご案内'),
+                  (15, '← 土地用のフラット35ローンご案内')]:
+    _c = ws3.cell(_r, 4)
+    _c.font = Font(name='Arial', size=10)
+    _c.fill = PatternFill('solid', fgColor=BLUE)
+    _c.alignment = Alignment(vertical='top', wrap_text=True)
+    _n = ws3.cell(_r, 5)
+    _n.value = _note
+    _n.font = Font(name='Arial', size=9, color='888888')
+    _n.alignment = Alignment(vertical='top')
+
 ws3.column_dimensions['A'].width = 24
 ws3.column_dimensions['B'].width = 52
 ws3.column_dimensions['C'].width = 20
+ws3.column_dimensions['D'].width = 52
+ws3.column_dimensions['E'].width = 30
 
 # ===== Sheet4: 売主コメント =====
 ws4 = wb.create_sheet('売主コメント')

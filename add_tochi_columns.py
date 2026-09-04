@@ -3,9 +3,10 @@
 既存のデータ・書式は一切変更しない。すでに列がある場合はスキップする。
 
 追加先（土地は新築と同じシートを使うため、新築側のシートだけが対象）:
-  写真          : キャプション（土地）
-  売主コメント  : キャプション（土地）
-  ピタクラ      : キャプション（土地）
+  写真          : キャプション（土地）列
+  売主コメント  : キャプション（土地）列
+  ピタクラ      : キャプション（土地）列
+  支払い例      : D列「土地の場合」＋ E列に説明書き
 
 列は「一番右の空き列」に足す。途中に挿入すると openpyxl では
 列幅・セル書式・結合セルが正しく追随せず、手で編集済みのファイルを壊す恐れがあるため。
@@ -25,6 +26,20 @@ from openpyxl.utils import get_column_letter
 
 NAVY = '1A5276'
 WHITE = 'FFFFFF'
+BLUE = 'E3F2FD'
+
+# 支払い例シートは見出し行が無くセル位置で読むので、列を固定で決める。
+# excel_reader.PAYMENT_VARIANT_COLUMN と揃えること。
+PAYMENT_SHEET = '支払い例'
+PAYMENT_VARIANT_COL = 4   # D列（土地の場合の値）
+PAYMENT_NOTE_COL = 5      # E列（説明書き）
+PAYMENT_ROWS = [
+    (3,  '← 土地で金利が違う場合だけ記入'),
+    (4,  '← 土地で返済期間が違う場合だけ記入'),
+    (10, '← 土地用の物件(住戸)情報'),
+    (14, '← 土地用の住宅ローンのご案内'),
+    (15, '← 土地用のフラット35ローンご案内'),
+]
 
 # 対象シートと、追加する列の見出し
 TARGETS = {
@@ -52,6 +67,32 @@ def _style_header(cell, text, model=None):
         cell.font = Font(name='Arial', bold=True, color=WHITE, size=10)
         cell.fill = PatternFill('solid', fgColor=NAVY)
         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+
+def _add_payment_column(ws) -> bool:
+    """支払い例シートに「土地の場合」列（D）と説明（E）を用意する。
+
+    D列には値を書かない。ヒント文を入れてしまうと、それが
+    そのまま入力値として読まれてしまうため。説明はE列にグレーで置く。
+    """
+    if _header_names(ws)[PAYMENT_VARIANT_COL - 1:PAYMENT_VARIANT_COL]:
+        if ws.cell(1, PAYMENT_VARIANT_COL).value:
+            return False  # 冪等：すでにある
+
+    _style_header(ws.cell(1, PAYMENT_VARIANT_COL), '土地の場合（空欄なら左と同じ）')
+    for row, note in PAYMENT_ROWS:
+        c = ws.cell(row, PAYMENT_VARIANT_COL)
+        c.font = Font(name='Arial', size=10)
+        c.fill = PatternFill('solid', fgColor=BLUE)
+        c.alignment = Alignment(vertical='top', wrap_text=True)
+        n = ws.cell(row, PAYMENT_NOTE_COL)
+        if not n.value:
+            n.value = note
+            n.font = Font(name='Arial', size=9, color='888888')
+            n.alignment = Alignment(vertical='top')
+    ws.column_dimensions[get_column_letter(PAYMENT_VARIANT_COL)].width = 52
+    ws.column_dimensions[get_column_letter(PAYMENT_NOTE_COL)].width = 30
+    return True
 
 
 def add_tochi_columns(path: str, backup: bool = True) -> dict:
@@ -82,6 +123,10 @@ def add_tochi_columns(path: str, backup: bool = True) -> dict:
             ws.column_dimensions[get_column_letter(idx)].width = 26
             headers.append(col_name)
             added.setdefault(sheet_name, []).append(col_name)
+
+    if PAYMENT_SHEET in wb.sheetnames:
+        if _add_payment_column(wb[PAYMENT_SHEET]):
+            added.setdefault(PAYMENT_SHEET, []).append('D列「土地の場合」')
 
     if not added:
         return added

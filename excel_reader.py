@@ -24,6 +24,10 @@ class SiteConfig:
     shri_loan:     str = ""          # 住宅ローンのご案内
     loan_annai:    str = ""          # フラット35ローンご案内
 
+    # 読み込み状況（種別専用列の書き忘れ検知用）
+    payment_variant_available: bool = False       # D列（土地の場合）が用意されているか
+    payment_variant_rows: list = field(default_factory=list)  # 実際にD列を使った行番号
+
 
 @dataclass
 class PhotoEntry:
@@ -34,13 +38,22 @@ class PhotoEntry:
     text:     str = ""   # 文言
 
 
-def read_site_config(filepath: str) -> SiteConfig:
+# 「支払い例」シートで種別ごとの値を書く列。
+# B列（通常）の右、C列（メモ書き）のさらに右に置く。
+PAYMENT_VARIANT_COLUMN = 4   # D列
+PAYMENT_BASE_COLUMN = 2      # B列
+
+
+def read_site_config(filepath: str, variant: str = "") -> SiteConfig:
     """
     Excelファイルからサイト設定を読み込む
 
     読み込むシート:
     - 「基本情報」: キー・バリュー形式 (A列=フィールド名, B列=値)
     - 「支払い例」: B2=物件価格, B3=金利, B4=返済期間, B14=住宅ローン文言, B15=フラット35文言
+
+    variant に "土地" を渡すと、支払い例シートのD列（土地の場合）を優先して読む。
+    D列が空欄の行はB列にフォールバックする（差分のある行だけ書けば済むようにするため）。
     """
     wb = openpyxl.load_workbook(filepath)
     config = SiteConfig()
@@ -64,35 +77,47 @@ def read_site_config(filepath: str) -> SiteConfig:
     if "支払い例" in wb.sheetnames:
         ws = wb["支払い例"]
 
-        def cell_val(row, col):
-            v = ws.cell(row, col).value
+        def cell_val(row):
+            """種別専用列（D）を優先し、空欄ならB列を使う"""
+            if variant:
+                v = ws.cell(row, PAYMENT_VARIANT_COLUMN).value
+                if _cell(v):
+                    config.payment_variant_rows.append(row)
+                    return v
+            v = ws.cell(row, PAYMENT_BASE_COLUMN).value
             return v if v is not None else ""
 
         # 入力項目（B3=金利, B4=返済期間）※B2は物件価格なので読まない
         try:
-            kinri = float(cell_val(3, 2))
+            kinri = float(cell_val(3))
             config.kinri = kinri
         except (ValueError, TypeError):
             pass
 
         try:
-            kikan = int(cell_val(4, 2))
+            kikan = int(cell_val(4))
             config.kikan = kikan
         except (ValueError, TypeError):
             pass
 
         # 固定テキスト（B10=物件情報, B14=住宅ローン, B15=フラット35）
-        v10 = str(cell_val(10, 2))
+        v10 = str(cell_val(10))
         if v10 and v10 != "None":
             config.shri_bkn_joho = v10
 
-        v14 = str(cell_val(14, 2))
+        v14 = str(cell_val(14))
         if v14 and v14 != "None":
             config.shri_loan = v14
 
-        v15 = str(cell_val(15, 2))
+        v15 = str(cell_val(15))
         if v15 and v15 != "None":
             config.loan_annai = v15
+
+        config.payment_variant_available = (
+            ws.max_column >= PAYMENT_VARIANT_COLUMN
+            and any(_cell(ws.cell(r, PAYMENT_VARIANT_COLUMN).value)
+                    for r in (1, 3, 4, 10, 14, 15))
+        )
 
     return config
 

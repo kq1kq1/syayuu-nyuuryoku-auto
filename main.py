@@ -97,13 +97,14 @@ BukkenSelectDialog = SelectDialog
 class StartupDialog(tk.Toplevel):
     """物件情報入力ダイアログ（起動時・次の物件へ）"""
 
-    def __init__(self, parent, kenchu_default="", price_default=""):
+    def __init__(self, parent, kenchu_default="", price_default="", tatemono_default=""):
         super().__init__(parent)
-        self.result_kenchu = None
-        self.result_price  = None
+        self.result_kenchu   = None
+        self.result_price    = None
+        self.result_tatemono = 0
 
         self.title("物件情報の入力")
-        self.geometry("420x220")
+        self.geometry("440x300")
         self.resizable(False, False)
         self.grab_set()
         self.focus_set()
@@ -134,12 +135,24 @@ class StartupDialog(tk.Toplevel):
         self._price_entry.grid(row=3, column=1, sticky="ew", padx=(10,0), pady=4)
         self._price_entry.insert(0, price_default)
 
-        tk.Label(frame, text="※ 金利・返済期間はExcelで変更できます",
+        tk.Label(frame, text="※ 土地の場合は「土地価格」を入力してください",
                  font=("Yu Gothic UI", 8), fg="#888").grid(
-                 row=4, column=0, columnspan=2, sticky="w", pady=(0, 12))
+                 row=4, column=0, columnspan=2, sticky="w")
+
+        # 建物価格（建築条件付き売地のとき用）
+        tk.Label(frame, text="建物価格（万円）",
+                 font=("Yu Gothic UI", 10)).grid(row=5, column=0, sticky="w", pady=4)
+        self._tatemono_entry = ttk.Entry(frame, font=("Yu Gothic UI", 11), width=22)
+        self._tatemono_entry.grid(row=5, column=1, sticky="ew", padx=(10,0), pady=4)
+        self._tatemono_entry.insert(0, tatemono_default)
+
+        tk.Label(frame, text="※ 建築条件付き売地のときだけ入力。空欄なら0として扱います\n"
+                            "　 支払い例は「物件価格＋建物価格」の合計で計算します",
+                 font=("Yu Gothic UI", 8), fg="#888").grid(
+                 row=6, column=0, columnspan=2, sticky="w", pady=(0, 12))
 
         btn_frame = tk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=2)
+        btn_frame.grid(row=7, column=0, columnspan=2)
         ttk.Button(btn_frame, text="OK", command=self._ok, width=12).pack(side="left", padx=6)
         ttk.Button(btn_frame, text="キャンセル", command=self._cancel, width=12).pack(side="left")
 
@@ -158,8 +171,16 @@ class StartupDialog(tk.Toplevel):
         if not price.isdigit():
             messagebox.showwarning("確認", "物件価格は数字のみで入力してください（例: 4798）", parent=self)
             return
-        self.result_kenchu = kenchu        # 空文字列も正常値（中古物件）
-        self.result_price  = int(price)
+
+        # 建物価格は任意。空欄は0（建築条件付きでない土地・新築・中古）
+        tatemono = _zen_to_han(self._tatemono_entry.get().strip())
+        if tatemono and not tatemono.isdigit():
+            messagebox.showwarning("確認", "建物価格は数字のみで入力してください（例: 1200）", parent=self)
+            return
+
+        self.result_kenchu   = kenchu      # 空文字列も正常値（中古物件）
+        self.result_price    = int(price)
+        self.result_tatemono = int(tatemono) if tatemono else 0
         self.destroy()
 
     def _cancel(self):
@@ -186,6 +207,7 @@ class App(tk.Tk):
         self._photo_folder  = tk.StringVar(value=DEFAULT_PHOTO_FOLDER)
         self._kenchu_bangou = tk.StringVar(value="未入力")
         self._bukken_kakaku = tk.StringVar(value="未入力")
+        self._tatemono_kakaku = tk.StringVar(value="0")   # 建築条件付き売地の建物価格（万円）
         self._bukken_type   = tk.StringVar(value="新築")  # "新築" / "中古" / "土地"
         self._running       = False
 
@@ -203,15 +225,21 @@ class App(tk.Tk):
     # -------- ダイアログ --------
 
     def _ask_bukken_info(self, first_time=False):
-        dlg = StartupDialog(self)
+        dlg = StartupDialog(self, tatemono_default=(
+            self._tatemono_kakaku.get() if self._tatemono_price() else ""))
         if dlg.result_kenchu is not None:
             self._kenchu_bangou.set(dlg.result_kenchu if dlg.result_kenchu else "なし（中古）")
             self._bukken_kakaku.set(str(dlg.result_price))
+            self._tatemono_kakaku.set(str(dlg.result_tatemono))
+            self._refresh_total_label()
             if not first_time:
                 self._log("=== 次の物件へ ===")
                 self._log(f"建築確認番号: {dlg.result_kenchu}")
                 self._log(f"物件価格: {dlg.result_price:,}万円")
-                self._write_price_to_excel(dlg.result_price)
+                if dlg.result_tatemono:
+                    self._log(f"建物価格: {dlg.result_tatemono:,}万円 "
+                              f"→ 合計 {dlg.result_price + dlg.result_tatemono:,}万円")
+                self._write_price_to_excel(self._total_price())
         elif first_time:
             self._kenchu_bangou.set("未入力")
             self._bukken_kakaku.set("未入力")
@@ -265,6 +293,10 @@ class App(tk.Tk):
                  width=10, anchor="w").pack(side="left")
         tk.Label(price_row, text="万円",
                  font=("Yu Gothic UI", 10)).pack(side="left")
+        # 建築条件付き売地のときだけ「＋建物1200万円 ＝ 合計5998万円」を出す
+        self._total_label = tk.Label(price_row, text="",
+                                     font=("Yu Gothic UI", 10), fg="#c0392b")
+        self._total_label.pack(side="left", padx=(8, 0))
 
         ttk.Button(info_grid, text="次の物件へ（情報をリセット）",
                    command=lambda: self._ask_bukken_info()).grid(
@@ -362,6 +394,36 @@ class App(tk.Tk):
         種別専用の列がある行だけ差し替える方式にしている。
         """
         return "土地" if self._bukken_type.get() == "土地" else ""
+
+    def _tatemono_price(self) -> int:
+        """建物価格（万円）。建築条件付き売地でなければ0。"""
+        try:
+            return int(self._tatemono_kakaku.get() or 0)
+        except ValueError:
+            return 0
+
+    def _total_price(self) -> int:
+        """支払い例の計算に使う金額。土地価格＋建物価格の合計。
+
+        建築条件付き売地は土地と建物を別々に提示するが、
+        ローンの計算と「金額」欄は合計で出す必要がある。
+        """
+        try:
+            base = int(self._bukken_kakaku.get())
+        except ValueError:
+            return 0
+        return base + self._tatemono_price()
+
+    def _refresh_total_label(self):
+        """建物価格がある場合だけ合計を画面に出す"""
+        if not hasattr(self, "_total_label"):
+            return
+        tatemono = self._tatemono_price()
+        if tatemono:
+            self._total_label.config(
+                text=f"＋ 建物 {tatemono:,}万円  ＝  合計 {self._total_price():,}万円")
+        else:
+            self._total_label.config(text="")
 
     def _log_photo_source(self, label: str, photos, sheet_name: str):
         """読み込み結果の内訳をログに出す（列の書き忘れ・シート欠落の検知用）"""
@@ -479,10 +541,19 @@ class App(tk.Tk):
         return True
 
     def _load_config(self):
-        from excel_reader import read_site_config
+        from excel_reader import read_site_config, PAYMENT_VARIANT_COLUMN
+        variant = self._variant()
         self._log("Excel読み込み中...")
-        config = read_site_config(self._get_excel_path())
+        config = read_site_config(self._get_excel_path(), variant=variant)
         self._log(f"担当者: {config.tantosha_name} / 金利: {config.kinri}% / 返済期間: {config.kikan}年")
+        if variant:
+            if not config.payment_variant_available:
+                self._log(f"  ⚠ 支払い例シートに「{variant}の場合」列（D列）がありません。通常の値を使います")
+            elif config.payment_variant_rows:
+                rows = "・".join(str(r) + "行目" for r in config.payment_variant_rows)
+                self._log(f"  ・支払い例の{variant}用の値を使用: {rows}")
+            else:
+                self._log(f"  ⚠ 支払い例のD列（{variant}の場合）が全て空欄です。通常の値を使います")
         return config
 
     # -------- SUUMO 一括入力 --------
@@ -507,7 +578,12 @@ class App(tk.Tk):
             self._log_photo_source("売主コメント", baishuu_photos, baishuu_sheet)
             self._log(f"  レイアウト指定: {len(layout_rows)}行")
             kenchu = self._kenchu_bangou.get()
-            price  = int(self._bukken_kakaku.get())
+            # 建築条件付き売地は土地価格＋建物価格の合計でローンを計算する
+            price     = self._total_price()
+            tatemono  = self._tatemono_price()
+            if tatemono:
+                self._log(f"  価格: 土地 {int(self._bukken_kakaku.get()):,}万円 "
+                          f"＋ 建物 {tatemono:,}万円 ＝ 合計 {price:,}万円")
             photo_folder = self._photo_folder.get()
 
             self._log("Chromeに接続中...")
