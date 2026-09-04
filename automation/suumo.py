@@ -79,7 +79,9 @@ class SuumoAutomation(AutomationBase):
     # ==============================
     # ② 内外観タブ
     # ==============================
-    SKIP_CATEGORIES = {"間取り図", "区画図"}
+    # カテゴリ名にこの語を「含む」スロットは飛ばす。
+    # 完全一致だと「間取り図(1)」「1階間取り図」のような表記ゆれを拾えないため。
+    SKIP_CATEGORIES = ("間取り図", "区画図")
 
     def fill_naigaikan(self, photos: list, photo_folder: str) -> bool:
         """内外観タブの画像・カテゴリ・説明文をExcel順に入力する。
@@ -103,7 +105,7 @@ class SuumoAutomation(AutomationBase):
             cat_input = slot_el.query_selector("input.jscSelectPop")
             cat_value = (cat_input.get_attribute("value") or "").strip() if cat_input else ""
 
-            if cat_value in self.SKIP_CATEGORIES:
+            if any(kw in cat_value for kw in self.SKIP_CATEGORIES):
                 self.log(f"  スキップ: スロット{i + 1}（{cat_value}）")
                 continue  # photo_idx は消費しない
 
@@ -347,19 +349,44 @@ class SuumoAutomation(AutomationBase):
         }
 
         # ① ネットレポートを選択
-        done = self._page.evaluate("""
+        # value は物件種別によって変わる（一戸建て: N010002 / 土地: N010003）ため、
+        # 値の直書きでは土地物件で querySelector が null になり選択できなかった。
+        # label の文字は種別によらず「ネットレポート」なので、そちらで探す。
+        result = self._page.evaluate("""
             () => {
-                const radio = document.querySelector(
-                    'input[name="kkkKoseiCd"][value="N010002"]'
+                const radios = Array.from(
+                    document.querySelectorAll('input[name="kkkKoseiCd"]')
                 );
-                if (!radio) return false;
-                radio.checked = true;
-                radio.dispatchEvent(new Event('change', {bubbles: true}));
-                radio.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-                return true;
+                const labelOf = (r) => {
+                    const l = r.id ? document.querySelector('label[for="' + r.id + '"]') : null;
+                    return (l ? l.textContent : '').trim();
+                };
+                const options = radios.map(r => ({
+                    value: r.value, id: r.id, label: labelOf(r)
+                }));
+                const target = radios.find(r => labelOf(r).includes('ネットレポート'));
+                if (!target) return {ok: false, options: options};
+                target.checked = true;
+                target.dispatchEvent(new Event('change', {bubbles: true}));
+                target.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                return {ok: true, value: target.value, label: labelOf(target)};
             }
         """)
-        self.log(f"  {'✓' if done else '✗'} ネットレポートを選択")
+
+        if not result.get("ok"):
+            # 選べないまま「企画選択」に進むと画面が固まるので、ここで必ず止める。
+            self.log("  ✗ ネットレポートのラジオボタンが見つかりません")
+            options = result.get("options") or []
+            if options:
+                self.log("  → 画面上の企画の選択肢:")
+                for o in options:
+                    self.log(f"      value={o.get('value')} id={o.get('id')} label={o.get('label')}")
+            else:
+                self.log("  → 企画のラジオボタンが1つもありません。レイアウト指定タブが開いているか確認してください")
+            self.log("  → レイアウト指定の入力を中止しました")
+            return False
+
+        self.log(f"  ✓ ネットレポートを選択（value={result.get('value')}）")
         time.sleep(0.3)
 
         # ② 企画選択ボタンをクリック → グリッド表示を待つ

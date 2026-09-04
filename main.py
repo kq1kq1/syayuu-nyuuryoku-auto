@@ -186,7 +186,7 @@ class App(tk.Tk):
         self._photo_folder  = tk.StringVar(value=DEFAULT_PHOTO_FOLDER)
         self._kenchu_bangou = tk.StringVar(value="未入力")
         self._bukken_kakaku = tk.StringVar(value="未入力")
-        self._bukken_type   = tk.StringVar(value="新築")  # "新築" or "中古"
+        self._bukken_type   = tk.StringVar(value="新築")  # "新築" / "中古" / "土地"
         self._running       = False
 
         self._build_ui()
@@ -270,7 +270,7 @@ class App(tk.Tk):
                    command=lambda: self._ask_bukken_info()).grid(
             row=0, column=2, rowspan=2, padx=(20,0), ipadx=6, ipady=4)
 
-        # 物件タイプ（新築 / 中古）
+        # 物件タイプ（新築 / 中古 / 土地）
         tk.Label(info_grid, text="物件タイプ:",
                  font=("Yu Gothic UI", 10)).grid(row=2, column=0, sticky="w", padx=(0,6), pady=(6,0))
         type_frame = tk.Frame(info_grid)
@@ -278,7 +278,9 @@ class App(tk.Tk):
         ttk.Radiobutton(type_frame, text="新築", variable=self._bukken_type,
                         value="新築").pack(side="left", padx=(0,12))
         ttk.Radiobutton(type_frame, text="中古", variable=self._bukken_type,
-                        value="中古").pack(side="left")
+                        value="中古").pack(side="left", padx=(0,12))
+        ttk.Radiobutton(type_frame, text="土地", variable=self._bukken_type,
+                        value="土地").pack(side="left")
 
         # 写真フォルダ選択
         photo_frame = ttk.LabelFrame(main, text=" 写真フォルダ ", padding=8)
@@ -352,6 +354,34 @@ class App(tk.Tk):
 
     def _is_chuko(self) -> bool:
         return self._bukken_type.get() == "中古"
+
+    def _variant(self) -> str:
+        """種別専用のExcel列を引くためのキー。
+
+        土地は新築と同じシートを使い、「キャプション（土地）」のような
+        種別専用の列がある行だけ差し替える方式にしている。
+        """
+        return "土地" if self._bukken_type.get() == "土地" else ""
+
+    def _log_photo_source(self, label: str, photos, sheet_name: str):
+        """読み込み結果の内訳をログに出す（列の書き忘れ・シート欠落の検知用）"""
+        variant = self._variant()
+        self._log(f"[{self._bukken_type.get()}] {label}: {len(photos)}行（{sheet_name}）")
+        if getattr(photos, "missing_sheet", False):
+            self._log(f"  ⚠ シート「{sheet_name}」がありません。0件として続行します")
+            return
+        if not variant:
+            return
+        if photos.variant_columns:
+            fb = photos.fallback_count
+            note = ""
+            if fb:
+                note = f" / 空欄のため通常列を使った行: {fb}"
+            elif len(photos):
+                note = " / 全行に記入あり"
+            self._log(f"  ・{variant}専用列: {', '.join(photos.variant_columns)}{note}")
+        else:
+            self._log(f"  ⚠ 「キャプション（{variant}）」列が見つかりません。通常のキャプションを使います")
 
     # -------- ブラウズ --------
 
@@ -466,12 +496,16 @@ class App(tk.Tk):
             config = self._load_config()
             excel_path = self._get_excel_path()
             chuko = self._is_chuko()
+            # 土地は新築と同じシートを使い、「（土地）」付きの列だけ差し替える
+            variant        = self._variant()
             photo_sheet    = "写真（中古）"    if chuko else "写真"
             baishuu_sheet  = "売主コメント（中古）" if chuko else "売主コメント"
-            photos         = read_photos(excel_path, sheet_name=photo_sheet)
-            baishuu_photos = read_photos(excel_path, sheet_name=baishuu_sheet)
+            photos         = read_photos(excel_path, sheet_name=photo_sheet,   variant=variant)
+            baishuu_photos = read_photos(excel_path, sheet_name=baishuu_sheet, variant=variant)
             layout_rows    = read_layout(excel_path)
-            self._log(f"[{'中古' if chuko else '新築'}] 写真: {len(photos)}枚 / 売主コメント: {len(baishuu_photos)}枚 / レイアウト: {len(layout_rows)}行")
+            self._log_photo_source("写真", photos, photo_sheet)
+            self._log_photo_source("売主コメント", baishuu_photos, baishuu_sheet)
+            self._log(f"  レイアウト指定: {len(layout_rows)}行")
             kenchu = self._kenchu_bangou.get()
             price  = int(self._bukken_kakaku.get())
             photo_folder = self._photo_folder.get()
@@ -596,9 +630,10 @@ class App(tk.Tk):
                 kenchu = ""
             chuko        = self._is_chuko()
             excel_path   = self._get_excel_path()
-            photos       = read_photos(excel_path, sheet_name="ピタクラ（中古）" if chuko else "ピタクラ")
+            sheet        = "ピタクラ（中古）" if chuko else "ピタクラ"
+            photos       = read_photos(excel_path, sheet_name=sheet, variant=self._variant())
             photo_folder = self._photo_folder.get() if chuko else DEFAULT_PHOTO_FOLDER
-            self._log(f"[{'中古' if chuko else '新築'}] ピタクラ: {len(photos)}行")
+            self._log_photo_source("ピタクラ", photos, sheet)
 
             from automation.pitakura import PitakuraAutomation
             bot = PitakuraAutomation(log_callback=self._log,

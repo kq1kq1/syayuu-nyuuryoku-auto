@@ -97,31 +97,107 @@ def read_site_config(filepath: str) -> SiteConfig:
     return config
 
 
-def read_photos(filepath: str, sheet_name: str = "写真") -> list:
+# 各項目に対応する見出し名。シートによって表記が違うので候補を並べる。
+# （ホームズのシートだけ文言列が「コメント（文言）」になっている）
+COLUMN_ALIASES = {
+    "slot":     ("順番",),
+    "filename": ("ファイル名",),
+    "caption":  ("キャプション",),
+    "text":     ("文言", "コメント（文言）"),
+}
+
+# 見出しが読めなかった古いシート用の並び順（従来の固定位置）
+LEGACY_ORDER = ("slot", "filename", "caption", "text")
+
+
+def _cell(value) -> str:
+    """セルの値を文字列にする。None や 'None' は空文字に潰す。"""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    return "" if s == "None" else s
+
+
+def _resolve_columns(ws, variant: str = ""):
+    """見出し行から「項目名 → 列インデックス」の対応を作る。
+
+    variant（例: "土地"）を渡すと、「キャプション（土地）」のような
+    種別専用の列も探して override として返す。
+    列を挿したり並べ替えたりしても壊れないように、位置ではなく名前で引く。
+    """
+    header = {}
+    for idx, cell in enumerate(next(ws.iter_rows(min_row=1, max_row=1, values_only=True), ())):
+        name = _cell(cell)
+        if name and name not in header:
+            header[name] = idx
+
+    base, override, names_found = {}, {}, {}
+    for key, names in COLUMN_ALIASES.items():
+        for name in names:
+            if name in header:
+                base[key] = header[name]
+                if variant:
+                    # 全角・半角どちらの括弧で書かれていても拾う
+                    for alt in (f"{name}（{variant}）", f"{name}({variant})"):
+                        if alt in header:
+                            override[key] = header[alt]
+                            names_found[key] = alt
+                            break
+                break
+    return base, override, names_found
+
+
+def read_photos(filepath: str, sheet_name: str = "写真", variant: str = "") -> list:
     """
     指定シートから写真データを読み込む（デフォルト: 「写真」シート）
 
     列構成: 順番 | ファイル名 | キャプション | 文言 | スーモスロット参考
+
+    variant に "土地" などを渡すと「キャプション（土地）」のような
+    種別専用の列を優先して読む。その列が空欄の行は通常の列にフォールバックする
+    （差分のある行だけ書けば済むようにするため）。
+
+    戻り値の list には fallback_count 属性が付く。
+    種別専用の列が空欄で通常列を使った行数で、書き忘れの検知に使う。
     """
     wb = openpyxl.load_workbook(filepath)
-    photos = []
+    photos = PhotoList()
 
     if sheet_name not in wb.sheetnames:
+        photos.missing_sheet = True
         return photos
 
     ws = wb[sheet_name]
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        slot     = str(row[0]).strip() if row[0] is not None else ""
-        filename = str(row[1]).strip() if row[1] is not None else ""
-        caption  = str(row[2]).strip() if row[2] is not None else ""
-        text     = str(row[3]).strip() if row[3] is not None else ""
+    base, override, variant_names = _resolve_columns(ws, variant)
+    photos.variant_columns = [variant_names[k] for k in sorted(variant_names)]
 
-        if filename == "None":
-            filename = ""
+    # 見出しが読めない古いシートは従来どおり位置で読む
+    if not base:
+        base = {key: i for i, key in enumerate(LEGACY_ORDER)}
+        override = {}
+        photos.legacy_layout = True
+
+    def pick(row, key):
+        col = override.get(key)
+        if col is not None and col < len(row):
+            value = _cell(row[col])
+            if value:
+                return value, False
+            return _pick_base(row, base, key), True  # 空欄 → 通常列へ
+        return _pick_base(row, base, key), False
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        slot, _         = pick(row, "slot")
+        filename, _     = pick(row, "filename")
+        caption, fb_cap = pick(row, "caption")
+        text, fb_txt    = pick(row, "text")
 
         # ファイル名・キャプション・文言のうち1つでもあれば対象（テキストのみ行も含む）
         if not filename and not caption and not text:
             continue
+
+        if fb_cap or fb_txt:
+            photos.fallback_count += 1
 
         photos.append(PhotoEntry(
             slot=slot,
@@ -131,6 +207,24 @@ def read_photos(filepath: str, sheet_name: str = "写真") -> list:
         ))
 
     return photos
+
+
+def _pick_base(row, base, key) -> str:
+    col = base.get(key)
+    if col is None or col >= len(row):
+        return ""
+    return _cell(row[col])
+
+
+class PhotoList(list):
+    """read_photos の戻り値。読み込み時の状況を属性で持ち回る。"""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.fallback_count = 0    # 種別専用列が空欄で通常列を使った行数
+        self.variant_columns = []  # 実際に見つかった種別専用列
+        self.legacy_layout = False # 見出しが読めず位置で読んだか
+        self.missing_sheet = False # シート自体が存在しなかったか
 
 
 @dataclass

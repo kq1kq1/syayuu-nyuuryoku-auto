@@ -67,7 +67,7 @@ ws1.column_dimensions['B'].width = 48
 
 # ===== Sheet2: 写真 =====
 ws2 = wb.create_sheet('写真')
-for c, h in enumerate(['順番','ファイル名','キャプション','文言','スーモスロット参考'], 1):
+for c, h in enumerate(['順番','ファイル名','キャプション','文言','スーモスロット参考','キャプション（土地）'], 1):
     hdr(ws2.cell(1, c), h)
 ws2.row_dimensions[1].height = 22
 
@@ -99,6 +99,7 @@ ws2.column_dimensions['B'].width = 24
 ws2.column_dimensions['C'].width = 26
 ws2.column_dimensions['D'].width = 42
 ws2.column_dimensions['E'].width = 16
+ws2.column_dimensions['F'].width = 26
 
 # ===== Sheet3: 支払い例 =====
 ws3 = wb.create_sheet('支払い例')
@@ -167,7 +168,7 @@ ws3.column_dimensions['C'].width = 20
 
 # ===== Sheet4: 売主コメント =====
 ws4 = wb.create_sheet('売主コメント')
-for c, h in enumerate(['順番','ファイル名','キャプション','文言','スーモスロット参考'], 1):
+for c, h in enumerate(['順番','ファイル名','キャプション','文言','スーモスロット参考','キャプション（土地）'], 1):
     hdr(ws4.cell(1, c), h)
 ws4.row_dimensions[1].height = 22
 
@@ -193,6 +194,7 @@ ws4.column_dimensions['B'].width = 24
 ws4.column_dimensions['C'].width = 26
 ws4.column_dimensions['D'].width = 42
 ws4.column_dimensions['E'].width = 16
+ws4.column_dimensions['F'].width = 26
 
 # ===== Sheet5: レイアウト指定 =====
 ws5 = wb.create_sheet('レイアウト指定')
@@ -255,10 +257,17 @@ naikan_photos = [(i, '', '', '', '') for i in range(1, 21)]
 make_homes_photo_sheet(wb, 'ホームズ_内観', naikan_photos)
 
 # ===== Sheet9: ピタクラ =====
-def make_site_photo_sheet(wb, sheet_name, rows, accent_color):
-    """汎用5列写真シート（順番/ファイル名/キャプション/文言/備考）"""
+def make_site_photo_sheet(wb, sheet_name, rows, accent_color, tochi_column=False):
+    """汎用5列写真シート（順番/ファイル名/キャプション/文言/備考）
+
+    tochi_column=True で「キャプション（土地）」列を右端に足す。
+    土地は新築と同じシートを使い、この列がある行だけキャプションを差し替える。
+    """
     ws = wb.create_sheet(sheet_name)
-    for c, h in enumerate(['順番', 'ファイル名', 'キャプション', '文言', '備考'], 1):
+    headers = ['順番', 'ファイル名', 'キャプション', '文言', '備考']
+    if tochi_column:
+        headers.append('キャプション（土地）')
+    for c, h in enumerate(headers, 1):
         hdr(ws.cell(1, c), h)
     ws.row_dimensions[1].height = 22
     for r, vals in enumerate(rows, 2):
@@ -274,12 +283,14 @@ def make_site_photo_sheet(wb, sheet_name, rows, accent_color):
     ws.column_dimensions['C'].width = 26
     ws.column_dimensions['D'].width = 42
     ws.column_dimensions['E'].width = 16
+    if tochi_column:
+        ws.column_dimensions['F'].width = 26
 
 ORANGE = 'FFF3E0'
 PURPLE = 'F3E5F5'
 
 pitakura_rows = [(i, '', '', '', '') for i in range(1, 21)]
-make_site_photo_sheet(wb, 'ピタクラ', pitakura_rows, ORANGE)
+make_site_photo_sheet(wb, 'ピタクラ', pitakura_rows, ORANGE, tochi_column=True)
 
 # ===== Sheet10: スカイヤーズ =====
 skyyers_rows = [(i, '', '', '', '') for i in range(1, 21)]
