@@ -1,0 +1,11 @@
+# Chrome起動時に開くURL。1行1URL。# で始まる行はコメント。
+#
+# 各サイトのログイン画面を開くだけです。
+# ログインと物件の検索は、開いたChromeで各自で行ってください。
+# 一度ログインすれば専用プロファイルに保存されるので、次回からは不要です。
+#
+# ※このファイルはGitに含まれます。トークンなどの秘密情報は書かないでください。
+https://sys.arcs.jp/login.html
+https://www.pitat-cloud.com/login/
+https://manager.suumo.jp/chukai/login/
+https://kodate.homes.co.jp/manager/index.php?

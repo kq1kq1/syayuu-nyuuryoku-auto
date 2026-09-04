@@ -28,8 +28,9 @@ dist/
 error.log
 *.log
 
-# URL設定（SUUMOトークン等を含む・ローカルのみ）
-urls.txt
+# URL設定
+# urls.txt は各サイトのログイン画面URLだけなので追跡する（秘密情報を書かないこと）。
+# トークン付きURLを使う運用に戻す場合はここに urls.txt を追加すること。
 config/urls.txt
 
 # Claude内部ファイル

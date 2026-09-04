@@ -29,24 +29,20 @@ if not defined CHROME goto :NO_CHROME
 if not exist "%CHROME%" goto :NO_CHROME
 
 REM ---- Locate the URL list -----------------------------------
-REM Works both in the distributed folder (urls.txt) and in the
-REM development repository (config\urls.txt).
-set "URLFILE="
-if exist "urls.txt" set "URLFILE=urls.txt"
-if not defined URLFILE if exist "config\urls.txt" set "URLFILE=config\urls.txt"
+REM urls.txt ships with the folder and only holds public login pages,
+REM so there is nothing for the user to fill in. Logging in and searching
+REM for the property is done by hand in the Chrome window this opens.
+set "URLFILE=urls.txt"
 
-if not defined URLFILE (
-    if exist "urls.example.txt" (
-        copy "urls.example.txt" "urls.txt" >nul
-        echo urls.txt was not found, so a template has been created.
-        echo Open it, paste the real SUUMO token, save, then run this again.
-        notepad "urls.txt"
-        popd
-        pause
-        exit /b 0
-    )
-    echo ERROR: neither urls.txt nor urls.example.txt was found.
-    echo Folder: %CD%
+if not exist "%URLFILE%" (
+    echo ===============================================================
+    echo  ERROR: urls.txt was not found.
+    echo.
+    echo  It should sit next to this file. If you received this folder
+    echo  as a zip, extract it again and keep every file together.
+    echo.
+    echo  Folder: %CD%
+    echo ===============================================================
     popd
     pause
     exit /b 1

@@ -23,7 +23,6 @@
 
 同梱されるもの:
     アプリ本体 + 同梱Python + はじめにお読みください.txt
-    urls.txt                  … あれば（SUUMOトークン入り。受け取った人の設定が不要になる）
     社有入力テンプレート.xlsx   … あれば（アプリにテンプレート作成ボタンが無いので実質必須）
     物件写真/                  … --with-photos を付けたときだけ
 """
@@ -80,7 +79,7 @@ APP_FILES = [
     "add_chuko_sheets.py",
     "1.最初にダブルクリック(ブラウザが開く).bat",
     "2.次にダブルクリック(自動入力アプリが起動する).bat",
-    "urls.example.txt",
+    "urls.txt",
     "はじめにお読みください.txt",
 ]
 APP_DIRS = ["automation"]
@@ -289,15 +288,6 @@ def copy_app(pkg: Path) -> None:
         shutil.copytree(src, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     log(f"       {len(APP_FILES)} ファイル + {len(APP_DIRS)} フォルダ")
 
-    # urls.txt（SUUMOトークンを含む）は、あれば実ファイルを同梱する。
-    # 無ければ example のまま配って受け取った人に入力してもらう。
-    for cand in (ROOT / "urls.txt", ROOT / "config" / "urls.txt"):
-        if cand.exists():
-            shutil.copy2(cand, pkg / "urls.txt")
-            log(f"       urls.txt を同梱（{cand.relative_to(ROOT)}）→ 受け取った人は設定不要")
-            break
-    else:
-        log("       [!] urls.txt なし → 受け取った人がSUUMOトークンを手入力する必要あり")
 
 
 def copy_extras(pkg: Path, with_photos: bool) -> None:
