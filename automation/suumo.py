@@ -31,8 +31,14 @@ class SuumoAutomation(AutomationBase):
     def fill_all(self, config, kenchu_bangou: str, price_man: int,
                  photo_folder: str = "", photos: list = None,
                  baishuu_photos: list = None,
-                 layout_rows: list = None) -> bool:
-        """基本情報 → 写真（内外観＋売主コメント） → 支払い例 を順番に入力する"""
+                 layout_rows: list = None,
+                 video_path: str = "", logo_path: str = "",
+                 sky_balcony: bool = False) -> bool:
+        """基本情報 → 写真（内外観＋売主コメント） → 支払い例 を順番に入力する
+
+        video_path / logo_path が指定されていれば、最後に動画・CMタブも処理する。
+        sky_balcony=True のときだけ動画を入れる（ロゴは有無に関わらず入れる）。
+        """
         self.log("=== SUUMO: 全タブ入力を開始します ===")
 
         # SUUMOの物件編集タブに切り替える
@@ -73,9 +79,304 @@ class SuumoAutomation(AutomationBase):
         self._click_tab("レイアウト")
         self.fill_layout(layout_rows or [])
 
+        # ⑤ 動画・CMタブ（ロゴ／スカイバルコニー動画）
+        if video_path or logo_path:
+            self.log("--- ⑤ 動画・CMタブへ移動 ---")
+            self._click_tab("動画")
+            self.fill_douga_cm(video_path, logo_path, sky_balcony)
+
         self.log("=== 全タブ入力完了 ===")
         return True
 
+    # ==============================
+    # ⑤ 動画・CMタブ
+    # ==============================
+    # 動画登録の別ウィンドウ・横画像の保存ボタンは、画面によって実装が違う可能性がある。
+    # 1つ目から順に試し、見つかったものを使う。
+    DOUGA_SAVE_SELECTORS = (
+        "a#linkSubBtn",
+        "a[title='登録・保存']",
+        "input[value='登録・保存']",
+        "input[type='button'][value*='登録']",
+        "a:has-text('登録・保存')",
+    )
+
+    def fill_douga_cm(self, video_path: str = "", logo_path: str = "",
+                      sky_balcony: bool = False) -> bool:
+        """動画・CMタブの一連の入力。
+
+        ① 動画（スカイバルコニーありのときだけ）
+           一覧の「動画」行の登録・修正 → 別ウィンドウ → ファイル選択 → 登録・保存 → 完了ダイアログOK
+        ② 動画・コマーシャライザー横画像にロゴ → キャプション区分「その他」→ 説明文
+        ③ 最後に登録・保存
+
+        SUUMO側の変換処理でページ遷移が遅いので、各段階で明示的に待つ。
+        """
+        self.log("=== SUUMO: 動画・CM の入力を開始します ===")
+        self.log(f"  スカイバルコニー: {'あり → 動画とロゴ' if sky_balcony else 'なし → ロゴのみ'}")
+
+        ok = True
+        douga_done = False   # 動画を実際に登録できたか（公開チェックの要否判定に使う）
+
+        # ---- ① 動画 ----
+        if sky_balcony:
+            if not video_path:
+                self.log("  ✗ 動画: ファイルパスが渡されていません")
+                ok = False
+            elif not os.path.exists(video_path):
+                self.log(f"  ✗ 動画: ファイルが見つかりません → {video_path}")
+                ok = False
+            else:
+                douga_done = self._upload_douga(video_path)
+                ok = douga_done and ok
+        else:
+            self.log("  - 動画: スカイバルコニーなしのため入れません")
+
+        # ---- ② 横画像（ロゴ）----
+        if logo_path and os.path.exists(logo_path):
+            ok = self._upload_yoko_gazo(logo_path, ensure_douga_public=douga_done) and ok
+        elif logo_path:
+            self.log(f"  ✗ ロゴ: ファイルが見つかりません → {logo_path}")
+            ok = False
+        else:
+            self.log("  - ロゴ: 入れません")
+
+        self.log("=== 動画・CM の入力完了（内容を確認して保存してください）===")
+        return ok
+
+    # ------------------------------------------------------------------
+    # ①動画: 一覧の「動画」行 → 別ウィンドウ → アップロード → 登録・保存
+    # ------------------------------------------------------------------
+    def _upload_douga(self, video_path: str) -> bool:
+        size_mb = os.path.getsize(video_path) / 1024 / 1024
+        self.log(f"--- 動画を登録します（{os.path.basename(video_path)} / {size_mb:.2f} MB）---")
+
+        # 一覧には「動画」行と「CM」行があり、どちらにも登録・修正ボタンがある。
+        # 動画側は id="dogaBtnUpd" なので ID で確実に選ぶ。
+        btn = "input#dogaBtnUpd"
+        try:
+            self._page.wait_for_selector(btn, timeout=10000, state="visible")
+        except Exception:
+            self.log("  ✗ 動画行の「登録・修正」ボタンが見つかりません（input#dogaBtnUpd）")
+            self._dump_screen("動画・CMタブ")
+            return False
+
+        # ボタンを押すと別ウィンドウが開く
+        win = None
+        try:
+            with self._page.expect_popup(timeout=20000) as popup:
+                self._page.click(btn, timeout=8000)
+            win = popup.value
+            self.log("  ✓ 動画登録ウィンドウが開きました")
+        except Exception as e:
+            self.log(f"  ✗ 動画登録ウィンドウが開きませんでした: {e}")
+            self.log("  → ポップアップがブロックされていないか確認してください")
+            return False
+
+        try:
+            # 「登録完了しました。このまま画面を閉じます。」を自動でOKする。
+            # クリックより先に登録しておかないと取りこぼす。
+            win.on("dialog", self._accept_dialog)
+
+            try:
+                win.wait_for_load_state("load", timeout=20000)
+            except Exception:
+                pass
+            time.sleep(1.0)
+
+            # 動画ファイルを選択
+            try:
+                win.wait_for_selector("input#btnDogaFile", timeout=15000, state="attached")
+                win.set_input_files("input#btnDogaFile", video_path, timeout=60000)
+                self.log("  ✓ 動画ファイルを選択しました")
+            except Exception as e:
+                self.log(f"  ✗ 動画ファイルの選択に失敗: {e}")
+                self._dump_screen("動画登録ウィンドウ", page=win)
+                return False
+
+            time.sleep(1.0)
+
+            # 登録・保存
+            clicked = self._click_first(win, self.DOUGA_SAVE_SELECTORS, "登録・保存")
+            if not clicked:
+                self.log("  ✗ 動画登録ウィンドウの「登録・保存」ボタンが見つかりません")
+                self._dump_screen("動画登録ウィンドウ", page=win)
+                return False
+
+            # アップロードと変換処理があるので長めに待つ。
+            # 完了ダイアログをOKすると、このウィンドウは自分で閉じる。
+            self.log("  … アップロード中（サイズによっては時間がかかります）")
+            try:
+                win.wait_for_event("close", timeout=180000)
+                self.log("  ✓ 動画の登録が完了しました（ウィンドウが閉じました）")
+            except Exception:
+                self.log("  ⚠ ウィンドウが閉じませんでした。画面を確認してください")
+                self._dump_screen("動画登録ウィンドウ", page=win)
+                return False
+        finally:
+            try:
+                if win and not win.is_closed():
+                    win.close()
+            except Exception:
+                pass
+
+        # 先に一覧を読み直して「納品済」等の登録後の状態にする。
+        # チェックを入れてからリロードすると、その操作が消えてしまうので順番が重要。
+        try:
+            self._page.reload(timeout=30000)
+            self._page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+        time.sleep(1.5)
+
+        # 一覧の「公開する」にチェックを入れる。
+        # 動画行のチェックボックスは id="jsiDogaRadio"（CM行とは別物）。
+        # 反映はこのあと横画像側で押す「登録・保存」でまとめて行われる。
+        self._check_if_unchecked("input#jsiDogaRadio", "公開する（動画）")
+        return True
+
+    # ------------------------------------------------------------------
+    # ②横画像: ロゴ + キャプション区分 + 説明文
+    # ------------------------------------------------------------------
+    YOKO_CATEGORY = "その他"
+    YOKO_CAPTION = "天空の家シリーズ"
+
+    def _upload_yoko_gazo(self, logo_path: str, ensure_douga_public: bool = False) -> bool:
+        self.log(f"--- 横画像にロゴを入れます（{os.path.basename(logo_path)}）---")
+
+        # ファイル選択（input#a07 / name=yokoUpFile）
+        try:
+            self._page.wait_for_selector("input#a07", timeout=15000, state="attached")
+            self._page.set_input_files("input#a07", logo_path, timeout=30000)
+            self.log("  ✓ ロゴを選択しました")
+        except Exception as e:
+            self.log(f"  ✗ ロゴの選択に失敗: {e}")
+            self._dump_screen("動画・CMタブ")
+            return False
+
+        time.sleep(1.5)   # サムネイル生成を待つ
+
+        # キャプション区分（readonly のポップアップ選択）
+        cur = ""
+        try:
+            el = self._page.query_selector("input#jscSelectPop")
+            cur = (el.get_attribute("value") or "").strip() if el else ""
+        except Exception:
+            pass
+        if cur == self.YOKO_CATEGORY:
+            self.log(f"  ✓ キャプション区分: 既に「{cur}」")
+        else:
+            if self._select_yoko_category(self.YOKO_CATEGORY):
+                self.log(f"  ✓ キャプション区分: {self.YOKO_CATEGORY}")
+            else:
+                self.log(f"  ✗ キャプション区分「{self.YOKO_CATEGORY}」を選べませんでした（現在: {cur or '空'}）")
+
+        # 説明文（textarea name=yokoCaption）
+        if self._fill_textarea("textarea[name='yokoCaption']", self.YOKO_CAPTION):
+            self.log(f"  ✓ 説明文: {self.YOKO_CAPTION}")
+        else:
+            self.log("  ✗ 説明文の入力欄が見つかりません（textarea[name='yokoCaption']）")
+
+        # 保存直前にもう一度「公開する」を確認する。
+        # 横画像のアップロードで画面が描き直された場合、先に入れたチェックが
+        # 外れている可能性があるため（入っていれば何もしない）。
+        if ensure_douga_public:
+            self._check_if_unchecked("input#jsiDogaRadio", "公開する（動画・保存前の再確認）")
+
+        # 登録・保存
+        time.sleep(0.5)
+        self._page.on("dialog", self._accept_dialog)
+        if self._click_first(self._page, self.DOUGA_SAVE_SELECTORS, "登録・保存"):
+            self.log("  … 保存中")
+            try:
+                self._page.wait_for_load_state("networkidle", timeout=60000)
+            except Exception:
+                pass
+            time.sleep(2.0)
+            self.log("  ✓ 横画像を保存しました")
+            return True
+
+        self.log("  ✗ 「登録・保存」ボタンが見つかりません")
+        self._dump_screen("動画・CMタブ")
+        return False
+
+    def _select_yoko_category(self, category: str) -> bool:
+        """横画像のキャプション区分をポップアップから選ぶ（内外観と同じ方式）"""
+        try:
+            self._page.evaluate("""
+                () => {
+                    const inp = document.querySelector('input#jscSelectPop');
+                    if (!inp) return;
+                    inp.scrollIntoView({behavior: 'instant', block: 'center'});
+                    inp.dispatchEvent(new MouseEvent('click',
+                        {bubbles: true, cancelable: true, view: window}));
+                }
+            """)
+            time.sleep(0.4)
+            return bool(self._page.evaluate("""
+                (target) => {
+                    const items = Array.from(document.querySelectorAll('li, a, td, div'));
+                    const hit = items.find(e =>
+                        (e.textContent || '').trim() === target &&
+                        e.getClientRects().length > 0 &&
+                        !e.querySelector('li, a, td'));
+                    if (!hit) return false;
+                    hit.dispatchEvent(new MouseEvent('click',
+                        {bubbles: true, cancelable: true, view: window}));
+                    return true;
+                }
+            """, category))
+        except Exception as e:
+            self.log(f"  ✗ キャプション区分の選択でエラー: {e}")
+            return False
+
+    # ------------------------------------------------------------------
+    # 共通ヘルパー
+    # ------------------------------------------------------------------
+    def _accept_dialog(self, dialog):
+        """「登録完了しました」等の確認ダイアログを自動でOKする"""
+        self.log(f"  [ダイアログ] 自動OK: {dialog.message[:60]}")
+        try:
+            dialog.accept()
+        except Exception:
+            pass
+
+    def _click_first(self, page, selectors, label: str) -> bool:
+        """候補セレクタを順に試し、最初に押せたものでクリックする"""
+        for sel in selectors:
+            try:
+                loc = page.locator(sel).first
+                if loc.count() > 0 and loc.is_visible(timeout=2000):
+                    loc.click(timeout=8000)
+                    self.log(f"  ✓ 「{label}」をクリック（{sel}）")
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _dump_screen(self, where: str, page=None):
+        """セレクタが見つからないときに、画面の入力欄・ボタンをログに出す（原因調査用）"""
+        page = page or self._page
+        try:
+            info = page.evaluate("""
+                () => ({
+                    url: location.href,
+                    files: Array.from(document.querySelectorAll('input[type=file]'))
+                        .map(e => ({name: e.name || '', id: e.id || ''})),
+                    btns: Array.from(document.querySelectorAll('input[type=button],input[type=submit],button,a[title]'))
+                        .map(e => ({tag: e.tagName.toLowerCase(), id: e.id || '',
+                                    label: (e.value || e.title || e.textContent || '').trim().slice(0, 24)}))
+                        .filter(b => b.label).slice(0, 20)
+                })
+            """)
+        except Exception as e:
+            self.log(f"  [調査] 画面情報を取得できません: {e}")
+            return
+        self.log(f"  [調査] {where}: {info.get('url', '')}")
+        for f in info.get("files", []):
+            self.log(f"      file: name={f['name']} id={f['id']}")
+        for b in info.get("btns", []):
+            self.log(f"      <{b['tag']}> id={b['id']} 「{b['label']}」")
     # ==============================
     # ② 内外観タブ
     # ==============================
@@ -687,6 +988,7 @@ class SuumoAutomation(AutomationBase):
         "内外観":     "nagaiId",
         "支払い例":   "kyotsuId",
         "レイアウト": "layoutId",
+        "動画":       "cmId",
     }
 
     def _click_tab(self, tab_text: str, max_retry: int = 2) -> bool:

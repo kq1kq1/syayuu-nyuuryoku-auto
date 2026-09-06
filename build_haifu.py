@@ -24,7 +24,7 @@
 同梱されるもの:
     アプリ本体 + 同梱Python + はじめにお読みください.txt
     社有入力テンプレート.xlsx   … あれば（アプリにテンプレート作成ボタンが無いので実質必須）
-    物件写真/                  … 中身ごと同梱（外すなら --no-photos）
+    物件写真/ 動画/            … 中身ごと同梱（外すなら --no-photos）
 """
 import hashlib
 import os
@@ -52,6 +52,7 @@ PACKAGE_NAME = "社有物件自動入力Bot"
 # main.py の EXCEL_FILENAME / PARENT_PHOTO_DIR と揃えること
 EXCEL_FILENAME = "社有入力テンプレート.xlsx"
 PHOTO_DIRNAME = "物件写真"
+VIDEO_DIRNAME = "動画"   # スカイバルコニー動画などの動画素材
 
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
@@ -302,6 +303,24 @@ def copy_extras(pkg: Path, with_photos: bool) -> None:
         log(f"[data] [!] {EXCEL_FILENAME} がありません。")
         log("            受け取った人は入力データを用意できません。")
         log("            リポジトリ直下に置いてから再ビルドしてください。")
+
+    # 動画フォルダ（写真と同じ扱い。mp4は圧縮済みなのでzipでも劣化しない）
+    video = ROOT / VIDEO_DIRNAME
+    if video.exists():
+        files = [q for q in video.rglob("*") if q.is_file()]
+        size_mb = sum(q.stat().st_size for q in files) / 1024 / 1024
+        if with_photos:
+            dst = pkg / VIDEO_DIRNAME
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(video, dst)
+            log(f"[data] {VIDEO_DIRNAME}/ を同梱（{len(files)}ファイル / {size_mb:.1f} MB）")
+            for q in sorted(files):
+                log(f"         {q.name}")
+        else:
+            log(f"[data] {VIDEO_DIRNAME}/ は同梱しません（{size_mb:.1f} MB）。--no-photos が指定されています")
+    else:
+        log(f"[data] [!] {VIDEO_DIRNAME}/ がありません。動画は同梱されません")
 
     photos = ROOT / PHOTO_DIRNAME
     if not photos.exists():

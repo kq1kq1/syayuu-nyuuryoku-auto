@@ -19,6 +19,7 @@ chrome_debug_profile/
 *.xls
 同仕様モデルハウス/
 物件写真/
+動画/
 
 # ビルド成果物（同梱Python約90MB・zip）
 dist/

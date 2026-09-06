@@ -18,7 +18,25 @@ EXCEL_FILENAME              = "社有入力テンプレート.xlsx"
 PARENT_PHOTO_DIR            = os.path.join(base_dir, "物件写真")
 DEFAULT_PHOTO_FOLDER        = os.path.join(PARENT_PHOTO_DIR, "同仕様モデルハウス")
 HOMES_DEFAULT_PHOTO_FOLDER  = os.path.join(PARENT_PHOTO_DIR, "ホームズ写真")
+LOGO_FOLDER                 = os.path.join(PARENT_PHOTO_DIR, "天空ロゴ")
+VIDEO_FOLDER                = os.path.join(base_dir, "動画")
+VIDEO_EXTS                  = {".mp4", ".MP4", ".mov", ".MOV"}
 IMAGE_EXTS                  = {".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"}
+
+
+def _pick_asset(folder: str, exts: set) -> str:
+    """素材フォルダから対象拡張子のファイルを1つ返す（無ければ空文字）。
+
+    ファイル名を直書きすると、担当者が動画やロゴを差し替えたときに
+    名前が変わって動かなくなる。拡張子で拾うことでその事故を防ぐ。
+    """
+    if not os.path.isdir(folder):
+        return ""
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        if os.path.isfile(path) and os.path.splitext(name)[1] in exts:
+            return path
+    return ""
 
 
 def _zen_to_han(s: str) -> str:
@@ -210,6 +228,7 @@ class App(tk.Tk):
         self._tatemono_kakaku = tk.StringVar(value="0")   # 建築条件付き売地の建物価格（万円）
         self._bukken_type   = tk.StringVar(value="新築")  # "新築" / "中古" / "土地"
         self._running       = False
+        self._sky_balcony   = False   # スカイバルコニーの有無（SUUMO実行時に確認）
 
         self._build_ui()
         self.deiconify()
@@ -348,7 +367,7 @@ class App(tk.Tk):
 
         ttk.Button(ops_frame,
                    text="スーモに入力する（基本情報 → 内外観・その他画像 → 支払い例他 → レイアウト指定）",
-                   command=lambda: self._run(self._fill_all_suumo)).pack(
+                   command=self._start_suumo).pack(
                    fill="x", ipadx=4, ipady=8)
 
         ttk.Button(ops_frame,
@@ -547,6 +566,37 @@ class App(tk.Tk):
             return
         threading.Thread(target=func, daemon=True).start()
 
+    # -------- SUUMO 開始（スカイバルコニーの確認つき） --------
+
+    def _start_suumo(self):
+        """SUUMO入力を始める。先にスカイバルコニーの有無を聞く。
+
+        automation はワーカースレッドで動くので、tkinter のダイアログは
+        必ずここ（メインスレッド）で出してから実行に移す。
+        """
+        if self._running:
+            messagebox.showinfo("確認", "処理中です。完了をお待ちください。")
+            return
+
+        if self._is_chuko():
+            # 中古はロゴも動画も入れないので確認そのものが不要
+            self._sky_balcony = False
+            self._log("中古のため、ロゴ・動画は入力しません")
+        else:
+            answer = messagebox.askyesnocancel(
+                "スカイバルコニーの確認",
+                "この物件にスカイバルコニーはありますか？\n\n"
+                "「はい」  … 天空ロゴ＋スカイバルコニー動画を入力します\n"
+                "「いいえ」… 天空ロゴのみ入力します",
+                parent=self)
+            if answer is None:
+                self._log("キャンセルしました（SUUMO入力は実行していません）")
+                return
+            self._sky_balcony = bool(answer)
+            self._log(f"スカイバルコニー: {'あり（ロゴ＋動画）' if answer else 'なし（ロゴのみ）'}")
+
+        self._run(self._fill_all_suumo)
+
     # -------- 共通チェック --------
 
     def _check_inputs(self):
@@ -613,7 +663,20 @@ class App(tk.Tk):
             if not bot.connect():
                 return
 
-            bot.fill_all(config, kenchu, price, photo_folder, photos, baishuu_photos, layout_rows)
+            # 動画・CMタブ用の素材。中古はロゴも動画も入れない。
+            if self._is_chuko():
+                logo_path = video_path = ""
+            else:
+                logo_path  = _pick_asset(LOGO_FOLDER, IMAGE_EXTS)
+                video_path = _pick_asset(VIDEO_FOLDER, VIDEO_EXTS) if self._sky_balcony else ""
+                if not logo_path:
+                    self._log(f"  ⚠ ロゴが見つかりません → {LOGO_FOLDER}")
+                if self._sky_balcony and not video_path:
+                    self._log(f"  ⚠ 動画が見つかりません → {VIDEO_FOLDER}")
+
+            bot.fill_all(config, kenchu, price, photo_folder, photos, baishuu_photos, layout_rows,
+                         video_path=video_path, logo_path=logo_path,
+                         sky_balcony=self._sky_balcony)
             bot.disconnect()
             self._log("✅ 全タブの入力完了（内容を確認して保存してください）")
         except Exception as e:
