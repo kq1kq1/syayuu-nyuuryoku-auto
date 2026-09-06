@@ -1233,9 +1233,30 @@ class SuumoAutomation(AutomationBase):
             self.log(f"  ✗ タブクリックエラー: {e}")
             return False
 
-    def _check_save_error(self) -> bool:
-        """保存後のページにエラーがあればダイアログを出して True を返す"""
+    def _check_save_error(self, retries: int = 3) -> bool:
+        """保存後のページにエラーがあればダイアログを出して True を返す。
+
+        保存ボタンを押した直後はページ遷移が始まっており、
+        調べている途中で古いDOMが破棄されて
+        「Execution context was destroyed」になることがある。
+        これは失敗ではなく遷移が起きたというだけなので、
+        新しいページが落ち着くのを待ってから調べ直す。
+        """
+        for attempt in range(1, retries + 1):
+            hit = self._check_save_error_once(attempt, retries)
+            if hit is not None:
+                return hit
+        self.log("  ※ ページ遷移中のためエラーチェックは省略しました（保存自体は完了）")
+        return False
+
+    def _check_save_error_once(self, attempt: int, retries: int):
+        """エラー有無を返す。遷移中で判定できなかった場合は None。"""
         try:
+            # 遷移が落ち着くのを待ってから調べる
+            try:
+                self._page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:
+                pass
             error_el = self._page.query_selector("text=登録不可エラー")
             if not error_el:
                 return False  # エラーなし
@@ -1259,6 +1280,15 @@ class SuumoAutomation(AutomationBase):
             mb.showerror("SUUMO 登録エラー", msg)
             return True
         except Exception as e:
+            text = str(e)
+            navigating = ("context was destroyed" in text
+                          or "Execution context" in text
+                          or "navigation" in text.lower())
+            if navigating and attempt < retries:
+                time.sleep(1.5)   # 新しいページの描画を待って調べ直す
+                return None
+            if navigating:
+                return None
             self.log(f"  [warn] エラーチェック失敗: {e}")
             return False
 
@@ -1296,6 +1326,12 @@ class SuumoAutomation(AutomationBase):
                         self._page.wait_for_load_state("load", timeout=15000)
                     except Exception:
                         time.sleep(3.0)
+                    # 遷移が完全に終わるまで待つ（直後だとDOMが差し替わる途中で読めない）
+                    try:
+                        self._page.wait_for_load_state("networkidle", timeout=10000)
+                    except Exception:
+                        pass
+                    time.sleep(0.8)
                     # 登録エラーチェック
                     if self._check_save_error():
                         return False
