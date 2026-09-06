@@ -345,25 +345,25 @@ class SuumoAutomation(AutomationBase):
                 self.log(f"  ✗ ロゴの選択に失敗（{attempt}回目）: {e}")
                 continue
 
-            # SUUMO側が対応外の形式を弾くと、選択直後に input の中身が消える。
-            # ここで0件なら待っても無駄なので、原因を明示して即座に打ち切る。
-            time.sleep(1.0)
+            self.log(f"  … ロゴをアップロード中（{attempt}回目）")
+            # 成否の判定はサムネイルの表示だけを見る。
+            # input の files は、アップロードが「成功」してもSUUMO側のJSが
+            # 送信後にクリアするため0件になる。これを失敗と誤判定していた。
+            for _ in range(40):          # 最大20秒
+                time.sleep(0.5)
+                if self._yoko_state().get("has_image"):
+                    self.log("  ✓ ロゴのアップロード完了（サムネイル表示を確認）")
+                    return True
+
+            # サムネイルが出ないまま input も空 ＝ 形式などで弾かれた可能性が高い
             if not self._yoko_state().get("file_selected"):
                 self.log(f"  ✗ ファイルがSUUMO側に受け付けられませんでした（{os.path.basename(logo_path)}）")
                 if ext not in (".jpg", ".jpeg"):
                     self.log(f"  → {ext} は動画・CMタブの横画像では使えません。JPGにしてください")
                     return False
                 self.log("  → 形式・サイズを確認してください")
-                continue
-
-            self.log(f"  … ロゴをアップロード中（{attempt}回目）")
-            # 「画像が登録されていません」の枠が消える＝アップロード完了
-            for _ in range(40):          # 最大20秒
-                time.sleep(0.5)
-                if self._yoko_state().get("has_image"):
-                    self.log("  ✓ ロゴのアップロード完了（サムネイル表示を確認）")
-                    return True
-            self.log("  ⚠ サムネイルが出ませんでした。やり直します")
+            else:
+                self.log("  ⚠ サムネイルが出ませんでした。やり直します")
 
         self.log("  ✗ ロゴのアップロードが反映されませんでした")
         return False
