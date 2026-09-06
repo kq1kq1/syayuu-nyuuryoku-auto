@@ -232,11 +232,13 @@ class App(tk.Tk):
         self._bukken_type   = tk.StringVar(value="新築")  # "新築" / "中古" / "土地"
         self._running       = False
         self._sky_balcony   = False   # スカイバルコニーの有無（SUUMO実行時に確認）
+        self._tantosha      = tk.StringVar(value="（未設定）")   # Excelから読み込む担当者名
 
         self._build_ui()
         self.deiconify()
 
         # mainloop開始後にダイアログを表示（200ms後）
+        self._load_tantosha()
         self.after(200, lambda: self._ask_bukken_info(first_time=True))
 
     # -------- Excel パス --------
@@ -303,6 +305,22 @@ class App(tk.Tk):
 
         main = tk.Frame(self, bg="#f5f5f5", padx=20, pady=12)
         main.pack(fill="both", expand=True)
+
+        # 担当者（物件ごとには変えないので、物件情報とは分けて常時表示する）
+        tanto_frame = ttk.LabelFrame(main, text=" 担当者 ", padding=8)
+        tanto_frame.pack(fill="x", pady=(0, 8))
+        tanto_row = tk.Frame(tanto_frame)
+        tanto_row.pack(fill="x")
+        tk.Label(tanto_row, text="現在の担当者:",
+                 font=("Yu Gothic UI", 10)).pack(side="left", padx=(0, 6))
+        tk.Label(tanto_row, textvariable=self._tantosha,
+                 font=("Yu Gothic UI", 11, "bold"), fg="#1a5276",
+                 anchor="w").pack(side="left")
+        ttk.Button(tanto_row, text="変更", width=8,
+                   command=self._change_tantosha).pack(side="right", ipadx=4)
+        tk.Label(tanto_frame,
+                 text="※ 各サイトの担当者選択で使います。姓だけでも探せます（部分一致）",
+                 font=("Yu Gothic UI", 8), fg="#888").pack(anchor="w", pady=(4, 0))
 
         # 物件情報表示
         info_frame = ttk.LabelFrame(main, text=" 現在の物件情報 ", padding=10)
@@ -569,6 +587,68 @@ class App(tk.Tk):
             return
         threading.Thread(target=func, daemon=True).start()
 
+    # -------- 担当者 --------
+
+    def _load_tantosha(self):
+        """Excelから担当者名を読み込んで画面に出す（起動時）"""
+        try:
+            from excel_reader import read_site_config
+            path = self._get_excel_path()
+            if not os.path.exists(path):
+                return
+            name = (read_site_config(path).tantosha_name or "").strip()
+            if name:
+                self._tantosha.set(name)
+        except Exception as e:
+            self._log(f"担当者の読み込みに失敗: {e}")
+
+    def _change_tantosha(self):
+        """担当者を入力し直してExcelに保存する（保存はこのボタンを押したときだけ）"""
+        from tkinter import simpledialog
+        cur = self._tantosha.get()
+        if cur == "（未設定）":
+            cur = ""
+        prompt = ("担当者名を入力してください。" + "\n\n"
+                  + "各サイトの担当者一覧から部分一致で探します。" + "\n"
+                  + "姓と名の間のスペースは全角・半角どちらでも構いません。")
+        name = simpledialog.askstring("担当者の変更", prompt,
+                                      initialvalue=cur, parent=self)
+        if name is None:
+            return
+        name = name.strip()
+        if not name:
+            messagebox.showwarning("確認", "担当者名を入力してください", parent=self)
+            return
+
+        path = self._get_excel_path()
+        if not os.path.exists(path):
+            messagebox.showerror("エラー", "Excelが見つかりません:" + "\n" + path,
+                                 parent=self)
+            return
+        try:
+            from excel_reader import write_tantosha_name
+            if write_tantosha_name(path, name):
+                self._tantosha.set(name)
+                self._log(f"担当者を変更しました: {name}")
+                messagebox.showinfo(
+                    "完了",
+                    f"担当者を「{name}」に変更しました。" + "\n" + "Excelにも保存しました。",
+                    parent=self)
+            else:
+                messagebox.showerror(
+                    "エラー",
+                    "Excelの「基本情報」シートに担当者名の行が見つかりません。",
+                    parent=self)
+        except PermissionError:
+            messagebox.showerror(
+                "エラー",
+                "Excelファイルを開いたままだと保存できません。" + "\n"
+                + "Excelを閉じてからもう一度お試しください。",
+                parent=self)
+        except Exception as e:
+            messagebox.showerror("エラー", "保存に失敗しました:" + "\n" + str(e),
+                                 parent=self)
+
     # -------- SUUMO 開始（スカイバルコニーの確認つき） --------
 
     def _start_suumo(self):
@@ -619,6 +699,10 @@ class App(tk.Tk):
         variant = self._variant()
         self._log("Excel読み込み中...")
         config = read_site_config(self._get_excel_path(), variant=variant)
+        # 画面に出ている担当者を優先する（Excelとは同期しているが取りこぼし防止）
+        ui_name = self._tantosha.get().strip()
+        if ui_name and ui_name != "（未設定）":
+            config.tantosha_name = ui_name
         self._log(f"担当者: {config.tantosha_name} / 金利: {config.kinri}% / 返済期間: {config.kikan}年")
         if variant:
             if not config.payment_variant_available:

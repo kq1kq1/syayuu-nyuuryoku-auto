@@ -38,6 +38,37 @@ class PhotoEntry:
     text:     str = ""   # 文言
 
 
+def normalize_name(name: str) -> str:
+    """氏名の表記ゆれを吸収する。
+
+    SUUMOの担当者一覧は姓名の間が全角スペースだったり半角だったり、
+    複数入っていたりする。NFKC正規化（全角スペース→半角）したうえで、
+    連続する空白を1つに詰めて比較できる形にする。
+    """
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFKC", str(name or ""))
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def write_tantosha_name(filepath: str, name: str) -> bool:
+    """「基本情報」シートの担当者名を書き換える。
+
+    行番号ではなくA列の項目名で探すので、行が増減しても壊れない。
+    Excelで開いたままだと保存できないので、その場合は例外を投げる。
+    """
+    wb = openpyxl.load_workbook(filepath)
+    if "基本情報" not in wb.sheetnames:
+        return False
+    ws = wb["基本情報"]
+    for row in range(1, ws.max_row + 1):
+        if str(ws.cell(row, 1).value or "").strip() == "担当者名":
+            ws.cell(row, 2, name)
+            wb.save(filepath)
+            return True
+    return False
+
+
 # 「支払い例」シートで種別ごとの値を書く列。
 # B列（通常）の右、C列（メモ書き）のさらに右に置く。
 PAYMENT_VARIANT_COLUMN = 4   # D列

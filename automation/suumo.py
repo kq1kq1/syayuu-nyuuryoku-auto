@@ -316,10 +316,9 @@ class SuumoAutomation(AutomationBase):
             return False
 
         # ---- ③ 説明文 ----
-        if self._fill_textarea("textarea[name='yokoCaption']", self.YOKO_CAPTION):
-            self.log(f"  ✓ 説明文: {self.YOKO_CAPTION}")
-        else:
-            self.log("  ✗ 説明文の入力欄が見つかりません（textarea[name='yokoCaption']）")
+        if not self._fill_yoko_caption(self.YOKO_CAPTION):
+            self._dump_yoko_state("説明文を入力できませんでした")
+            return False
 
         # ---- ④ 公開チェックの再確認 ----
         # 横画像のアップロードで画面が描き直された場合、先に入れたチェックが
@@ -416,6 +415,47 @@ class SuumoAutomation(AutomationBase):
 
         return False
 
+    def _fill_yoko_caption(self, text: str) -> bool:
+        """説明文を入れる。
+
+        この欄は空のとき「画像キャプションを入力してください。（100文字）」という
+        プレースホルダーが value として入り class="jscTxtGray" になる作り。
+        JSで value を差し替えるだけだと灰色表示のままでサイト側に空と見なされうるので、
+        レイアウト指定のタイトル欄と同じく Playwright のネイティブ入力を先に試す。
+        """
+        sel = "textarea[name='yokoCaption']"
+        try:
+            self._page.wait_for_selector(sel, timeout=10000, state="attached")
+        except Exception:
+            self.log(f"  ✗ 説明文の入力欄が見つかりません（{sel}）")
+            return False
+
+        try:
+            ta = self._page.locator(sel).first
+            ta.click(timeout=5000)
+            ta.fill("", timeout=5000)      # プレースホルダーを消す
+            ta.fill(text, timeout=5000)
+        except Exception as e:
+            self.log(f"  [warn] ネイティブ入力に失敗、JSで再試行: {e}")
+            self._fill_textarea(sel, text)
+
+        time.sleep(0.3)
+        cur = self._yoko_state().get("caption", "")
+        if cur == text:
+            self.log(f"  ✓ 説明文: {text}")
+            return True
+
+        # ネイティブが効かなかった場合の保険
+        self._fill_textarea(sel, text)
+        time.sleep(0.3)
+        cur = self._yoko_state().get("caption", "")
+        if cur == text:
+            self.log(f"  ✓ 説明文: {text}（JSで入力）")
+            return True
+
+        self.log(f"  ✗ 説明文が反映されませんでした（現在: {cur[:30] or '空'}）")
+        return False
+
     def _save_yoko(self) -> bool:
         """「登録・保存」を押す。disabled が外れるまで待ってから押す。"""
         # 画像とカテゴリが揃うまでボタンは disabled のまま（クリックしても無反応）
@@ -459,9 +499,12 @@ class SuumoAutomation(AutomationBase):
                     // 「画像が登録されていません」の枠が表示されていれば未登録
                     const noimg = document.querySelector('.jscNoImageBox');
                     const noimgShown = !!(noimg && getComputedStyle(noimg).display !== 'none');
+                    // 空欄のときはプレースホルダー文言が value に入る作りなので、
+                    // 「〜してください」を含む値は未選択・未入力として扱う
+                    const ph = (v) => (v && /してください/.test(v)) ? '' : (v || '').trim();
                     return {
-                        category: cat ? (cat.value || '').trim() : '',
-                        caption:  cap ? (cap.value || '').trim() : '',
+                        category: cat ? ph(cat.value) : '',
+                        caption:  cap ? ph(cap.value) : '',
                         has_image: !noimgShown,
                         file_selected: !!(file && file.files && file.files.length > 0),
                         save_enabled: !!(save && !save.hasAttribute('disabled')
@@ -960,8 +1003,9 @@ class SuumoAutomation(AutomationBase):
             popup.wait_for_load_state("domcontentloaded")
             time.sleep(1.0)  # ポップアップの読み込みを待つ
 
-            # 全角・半角スペースを正規化して名前照合
-            norm = lambda s: unicodedata.normalize("NFKC", s).strip()
+            # 名前照合。SUUMO側は姓名の間が全角/半角どちらもありえるうえ、
+            # スペースが2つ以上入っていることもあるので、正規化して1つに詰める。
+            from excel_reader import normalize_name as norm
             target = norm(name)
 
             links = popup.query_selector_all("a.jscPopFloorKnj")
