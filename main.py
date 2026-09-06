@@ -217,7 +217,7 @@ class App(tk.Tk):
         self.withdraw()
 
         self.title("社有入力Bot v2.0")
-        self.geometry("720x560")
+        self.geometry("720x700")
         self.resizable(True, True)
         self.configure(bg="#f5f5f5")
 
@@ -303,8 +303,40 @@ class App(tk.Tk):
                  font=("Yu Gothic UI", 16, "bold"),
                  fg="white", bg="#1a5276").pack()
 
-        main = tk.Frame(self, bg="#f5f5f5", padx=20, pady=12)
-        main.pack(fill="both", expand=True)
+        # 本体はスクロールできるようにする。
+        # 担当者欄などを足して縦に伸びたため、小さい画面ではログが押し出されてしまう。
+        # フッターは常に見えるように、先に下端へ確保しておく。
+        footer = tk.Frame(self, bg="#e0e0e0", pady=3)
+        footer.pack(fill="x", side="bottom")
+        tk.Label(footer,
+                 text="使い方: ①「1.最初にダブルクリック」でChrome起動 → ②SUUMOの物件編集ページを開く → ③入力ボタンをクリック",
+                 font=("Yu Gothic UI", 8), fg="#555", bg="#e0e0e0").pack()
+
+        outer = tk.Frame(self, bg="#f5f5f5")
+        outer.pack(fill="both", expand=True)
+        canvas = tk.Canvas(outer, bg="#f5f5f5", highlightthickness=0)
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        main = tk.Frame(canvas, bg="#f5f5f5", padx=20, pady=12)
+        main_id = canvas.create_window((0, 0), window=main, anchor="nw")
+        # 中身の高さが変わったらスクロール範囲を作り直す
+        main.bind("<Configure>",
+                  lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        # 横幅はウィンドウに追従させる（横スクロールは出さない）
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfigure(main_id, width=e.width))
+
+        def _on_wheel(event):
+            # ログ欄の上ではログ自身をスクロールさせる
+            log = getattr(self, "_log_text", None)
+            if log is not None and str(event.widget).startswith(str(log)):
+                return
+            canvas.yview_scroll(int(-event.delta / 120), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_wheel)
 
         # 担当者（物件ごとには変えないので、物件情報とは分けて常時表示する）
         tanto_frame = ttk.LabelFrame(main, text=" 担当者 ", padding=8)
@@ -415,22 +447,17 @@ class App(tk.Tk):
                  font=("Yu Gothic UI", 8), fg="#555", bg="#f5f5f5").pack(side="left")
 
         # ログ
+        # ログ。高さは行数で固定する（自動入力の枠の半分より少し大きいくらい）。
+        # expand させると画面サイズによって潰れたり伸びたりして読みにくいため。
         log_frame = ttk.LabelFrame(main, text=" ログ ", padding=5)
-        log_frame.pack(fill="both", expand=True)
-        self._log_text = tk.Text(log_frame, font=("Consolas", 9),
+        log_frame.pack(fill="x")
+        self._log_text = tk.Text(log_frame, font=("Consolas", 9), height=8,
                                  state="disabled", bg="#1e1e1e", fg="#d4d4d4",
                                  relief="flat", wrap="word")
         sb = ttk.Scrollbar(log_frame, command=self._log_text.yview)
         self._log_text.configure(yscrollcommand=sb.set)
-        self._log_text.pack(side="left", fill="both", expand=True)
+        self._log_text.pack(side="left", fill="x", expand=True)
         sb.pack(side="right", fill="y")
-
-        # フッター
-        footer = tk.Frame(self, bg="#e0e0e0", pady=3)
-        footer.pack(fill="x", side="bottom")
-        tk.Label(footer,
-                 text="使い方: ①「1.最初にダブルクリック」でChrome起動 → ②SUUMOの物件編集ページを開く → ③入力ボタンをクリック",
-                 font=("Yu Gothic UI", 8), fg="#555", bg="#e0e0e0").pack()
 
     # -------- 物件タイプ --------
 
