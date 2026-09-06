@@ -21,6 +21,9 @@ HOMES_DEFAULT_PHOTO_FOLDER  = os.path.join(PARENT_PHOTO_DIR, "ホームズ写真
 LOGO_FOLDER                 = os.path.join(PARENT_PHOTO_DIR, "天空ロゴ")
 VIDEO_FOLDER                = os.path.join(base_dir, "動画")
 VIDEO_EXTS                  = {".mp4", ".MP4", ".mov", ".MOV"}
+# ロゴはJPGのみ。SUUMOの動画・CMタブの横画像はPNGを受け付けず、
+# ファイル選択した直後に中身をクリアされる（実機で確認済み）。
+LOGO_EXTS                   = {".jpg", ".jpeg", ".JPG", ".JPEG"}
 IMAGE_EXTS                  = {".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG"}
 
 
@@ -667,10 +670,15 @@ class App(tk.Tk):
             if self._is_chuko():
                 logo_path = video_path = ""
             else:
-                logo_path  = _pick_asset(LOGO_FOLDER, IMAGE_EXTS)
+                logo_path  = _pick_asset(LOGO_FOLDER, LOGO_EXTS)
                 video_path = _pick_asset(VIDEO_FOLDER, VIDEO_EXTS) if self._sky_balcony else ""
                 if not logo_path:
-                    self._log(f"  ⚠ ロゴが見つかりません → {LOGO_FOLDER}")
+                    other = _pick_asset(LOGO_FOLDER, IMAGE_EXTS)
+                    if other:
+                        self._log(f"  ⚠ ロゴはJPGにしてください（SUUMOがPNGを受け付けません）"
+                                  f" → 今あるのは {os.path.basename(other)}")
+                    else:
+                        self._log(f"  ⚠ ロゴが見つかりません → {LOGO_FOLDER}")
                 if self._sky_balcony and not video_path:
                     self._log(f"  ⚠ 動画が見つかりません → {VIDEO_FOLDER}")
 

@@ -336,6 +336,7 @@ class SuumoAutomation(AutomationBase):
         SUUMO側は hidden iframe 経由でアップロードするため、
         set_input_files 直後はまだ反映されていない。サムネイルが出るまで待つ。
         """
+        ext = os.path.splitext(logo_path)[1].lower()
         for attempt in range(1, retries + 1):
             try:
                 self._page.wait_for_selector("input#a07", timeout=15000, state="attached")
@@ -344,12 +345,22 @@ class SuumoAutomation(AutomationBase):
                 self.log(f"  ✗ ロゴの選択に失敗（{attempt}回目）: {e}")
                 continue
 
+            # SUUMO側が対応外の形式を弾くと、選択直後に input の中身が消える。
+            # ここで0件なら待っても無駄なので、原因を明示して即座に打ち切る。
+            time.sleep(1.0)
+            if not self._yoko_state().get("file_selected"):
+                self.log(f"  ✗ ファイルがSUUMO側に受け付けられませんでした（{os.path.basename(logo_path)}）")
+                if ext not in (".jpg", ".jpeg"):
+                    self.log(f"  → {ext} は動画・CMタブの横画像では使えません。JPGにしてください")
+                    return False
+                self.log("  → 形式・サイズを確認してください")
+                continue
+
             self.log(f"  … ロゴをアップロード中（{attempt}回目）")
             # 「画像が登録されていません」の枠が消える＝アップロード完了
-            for _ in range(30):          # 最大15秒
+            for _ in range(40):          # 最大20秒
                 time.sleep(0.5)
-                state = self._yoko_state()
-                if state.get("has_image"):
+                if self._yoko_state().get("has_image"):
                     self.log("  ✓ ロゴのアップロード完了（サムネイル表示を確認）")
                     return True
             self.log("  ⚠ サムネイルが出ませんでした。やり直します")
