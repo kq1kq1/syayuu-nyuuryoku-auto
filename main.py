@@ -233,6 +233,11 @@ class App(tk.Tk):
             self._kenchu_bangou.set(dlg.result_kenchu if dlg.result_kenchu else "なし")
             self._bukken_kakaku.set(str(dlg.result_price))
             self._tatemono_kakaku.set(str(dlg.result_tatemono))
+            # 建物価格が入っている＝建築条件付き売地なので、物件タイプを自動で「土地」にする。
+            # 空欄のときは何もしない（手で選んだ中古や、建築条件が付いていない土地を
+            # 勝手に新築へ戻さないため）。初期値が新築なので「入れなければ新築のまま」になる。
+            if dlg.result_tatemono:
+                self._bukken_type.set("土地")
             self._refresh_total_label()
             if not first_time:
                 self._log("=== 次の物件へ ===")
@@ -241,6 +246,7 @@ class App(tk.Tk):
                 if dlg.result_tatemono:
                     self._log(f"建物価格: {dlg.result_tatemono:,}万円 "
                               f"→ 合計 {dlg.result_price + dlg.result_tatemono:,}万円")
+                    self._log("物件タイプを「土地」に自動切替（建物価格が入力されたため）")
                 else:
                     self._log("建物価格: なし（支払い例は物件価格のみで計算）")
                 self._write_price_to_excel(self._total_price())
