@@ -91,6 +91,62 @@ class SuumoAutomation(AutomationBase):
     # ==============================
     # ⑤ 動画・CMタブ
     # ==============================
+    # 内外観・横画像で共通のカテゴリ選択ポップアップから項目を選ぶJS。
+    # li の textContent は隠しspanを含んで「991その他その他」のようになるため、
+    # span.jscSelectText / 非表示でないspan から表示名を取り出して比較する。
+    SELECT_POPUP_JS = """
+                (target) => {
+                    function norm(s) {
+                        return s.replace(/[\\uFF01-\\uFF5E]/g,
+                            c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
+                        ).replace(/\\u3000/g, ' ')
+                         .replace(/^[★▲△■☆※◆◇●○]+/, '')
+                         .trim();
+                    }
+                    const normTarget = norm(target);
+
+                    // 表示中のポップアップを探す
+                    const box = [
+                        'div#jsiSelectPopBoxUC',
+                        'div#jsiSelectPopBox',
+                        'ul#jsiSelectContentsUc',
+                        'ul#jsiSelectContents'
+                    ].map(s => document.querySelector(s))
+                     .find(el => el && getComputedStyle(el).display !== 'none');
+                    if (!box) return 'nobox';
+
+                    // li → span.jscSelectText → span:not(.dn) → li全体 の順でテキスト取得
+                    const items = Array.from(box.querySelectorAll('li'));
+                    const opts = [];
+                    for (const li of items) {
+                        const txtSpan = li.querySelector('span.jscSelectText')
+                                     || Array.from(li.querySelectorAll('span'))
+                                            .find(s => !s.classList.contains('dn') && s.textContent.trim());
+                        const raw = (txtSpan ? txtSpan.textContent : li.textContent).trim();
+                        opts.push(raw);
+                        if (norm(raw) === normTarget) {
+                            li.click();
+                            return 'ok:' + raw;
+                        }
+                    }
+
+                    // li が空なら a タグも試す
+                    if (items.length === 0) {
+                        for (const a of box.querySelectorAll('a')) {
+                            const raw = a.textContent.trim();
+                            opts.push(raw);
+                            if (norm(raw) === normTarget) {
+                                a.click();
+                                return 'ok:' + raw;
+                            }
+                        }
+                    }
+
+                    if (opts.length === 0) return 'noitems';
+                    return 'notfound:' + JSON.stringify(opts.slice(0, 20));
+                }
+            """
+
     # 動画登録の別ウィンドウ・横画像の保存ボタンは、画面によって実装が違う可能性がある。
     # 1つ目から順に試し、見つかったものを使う。
     DOUGA_SAVE_SELECTORS = (
@@ -242,93 +298,178 @@ class SuumoAutomation(AutomationBase):
     YOKO_CAPTION = "天空の家シリーズ"
 
     def _upload_yoko_gazo(self, logo_path: str, ensure_douga_public: bool = False) -> bool:
+        """動画・コマーシャライザー横画像にロゴ・カテゴリ・説明文を入れて保存する。
+
+        「登録・保存」ボタンは画像とカテゴリが揃うまで disabled のままなので、
+        各入力が実際に反映されたことを確認しながら進める。
+        """
         self.log(f"--- 横画像にロゴを入れます（{os.path.basename(logo_path)}）---")
 
-        # ファイル選択（input#a07 / name=yokoUpFile）
-        try:
-            self._page.wait_for_selector("input#a07", timeout=15000, state="attached")
-            self._page.set_input_files("input#a07", logo_path, timeout=30000)
-            self.log("  ✓ ロゴを選択しました")
-        except Exception as e:
-            self.log(f"  ✗ ロゴの選択に失敗: {e}")
-            self._dump_screen("動画・CMタブ")
+        # ---- ① ロゴをアップロード ----
+        if not self._set_yoko_file(logo_path):
+            self._dump_yoko_state("ロゴのアップロードに失敗")
             return False
 
-        time.sleep(1.5)   # サムネイル生成を待つ
+        # ---- ② キャプション区分 ----
+        if not self._select_yoko_category(self.YOKO_CATEGORY):
+            self._dump_yoko_state("キャプション区分を選べませんでした")
+            return False
 
-        # キャプション区分（readonly のポップアップ選択）
-        cur = ""
-        try:
-            el = self._page.query_selector("input#jscSelectPop")
-            cur = (el.get_attribute("value") or "").strip() if el else ""
-        except Exception:
-            pass
-        if cur == self.YOKO_CATEGORY:
-            self.log(f"  ✓ キャプション区分: 既に「{cur}」")
-        else:
-            if self._select_yoko_category(self.YOKO_CATEGORY):
-                self.log(f"  ✓ キャプション区分: {self.YOKO_CATEGORY}")
-            else:
-                self.log(f"  ✗ キャプション区分「{self.YOKO_CATEGORY}」を選べませんでした（現在: {cur or '空'}）")
-
-        # 説明文（textarea name=yokoCaption）
+        # ---- ③ 説明文 ----
         if self._fill_textarea("textarea[name='yokoCaption']", self.YOKO_CAPTION):
             self.log(f"  ✓ 説明文: {self.YOKO_CAPTION}")
         else:
             self.log("  ✗ 説明文の入力欄が見つかりません（textarea[name='yokoCaption']）")
 
-        # 保存直前にもう一度「公開する」を確認する。
+        # ---- ④ 公開チェックの再確認 ----
         # 横画像のアップロードで画面が描き直された場合、先に入れたチェックが
         # 外れている可能性があるため（入っていれば何もしない）。
         if ensure_douga_public:
             self._check_if_unchecked("input#jsiDogaRadio", "公開する（動画・保存前の再確認）")
 
-        # 登録・保存
-        time.sleep(0.5)
-        self._page.on("dialog", self._accept_dialog)
-        if self._click_first(self._page, self.DOUGA_SAVE_SELECTORS, "登録・保存"):
-            self.log("  … 保存中")
-            try:
-                self._page.wait_for_load_state("networkidle", timeout=60000)
-            except Exception:
-                pass
-            time.sleep(2.0)
-            self.log("  ✓ 横画像を保存しました")
-            return True
+        # ---- ⑤ 登録・保存 ----
+        return self._save_yoko()
 
-        self.log("  ✗ 「登録・保存」ボタンが見つかりません")
-        self._dump_screen("動画・CMタブ")
+    def _set_yoko_file(self, logo_path: str, retries: int = 2) -> bool:
+        """ロゴを input#a07 にセットし、実際にアップロードされたか確認する。
+
+        SUUMO側は hidden iframe 経由でアップロードするため、
+        set_input_files 直後はまだ反映されていない。サムネイルが出るまで待つ。
+        """
+        for attempt in range(1, retries + 1):
+            try:
+                self._page.wait_for_selector("input#a07", timeout=15000, state="attached")
+                self._page.set_input_files("input#a07", logo_path, timeout=30000)
+            except Exception as e:
+                self.log(f"  ✗ ロゴの選択に失敗（{attempt}回目）: {e}")
+                continue
+
+            self.log(f"  … ロゴをアップロード中（{attempt}回目）")
+            # 「画像が登録されていません」の枠が消える＝アップロード完了
+            for _ in range(30):          # 最大15秒
+                time.sleep(0.5)
+                state = self._yoko_state()
+                if state.get("has_image"):
+                    self.log("  ✓ ロゴのアップロード完了（サムネイル表示を確認）")
+                    return True
+            self.log("  ⚠ サムネイルが出ませんでした。やり直します")
+
+        self.log("  ✗ ロゴのアップロードが反映されませんでした")
         return False
 
     def _select_yoko_category(self, category: str) -> bool:
-        """横画像のキャプション区分をポップアップから選ぶ（内外観と同じ方式）"""
-        try:
-            self._page.evaluate("""
-                () => {
-                    const inp = document.querySelector('input#jscSelectPop');
-                    if (!inp) return;
-                    inp.scrollIntoView({behavior: 'instant', block: 'center'});
-                    inp.dispatchEvent(new MouseEvent('click',
-                        {bubbles: true, cancelable: true, view: window}));
-                }
-            """)
-            time.sleep(0.4)
-            return bool(self._page.evaluate("""
-                (target) => {
-                    const items = Array.from(document.querySelectorAll('li, a, td, div'));
-                    const hit = items.find(e =>
-                        (e.textContent || '').trim() === target &&
-                        e.getClientRects().length > 0 &&
-                        !e.querySelector('li, a, td'));
-                    if (!hit) return false;
-                    hit.dispatchEvent(new MouseEvent('click',
-                        {bubbles: true, cancelable: true, view: window}));
-                    return true;
-                }
-            """, category))
-        except Exception as e:
-            self.log(f"  ✗ キャプション区分の選択でエラー: {e}")
+        """横画像のキャプション区分をポップアップから選ぶ。
+
+        内外観と同じポップアップなので、実績のある SELECT_POPUP_JS を使う。
+        li の textContent は隠しspanを含むため、単純な文字列一致では選べない。
+        """
+        cur = self._yoko_state().get("category", "")
+        if cur == category:
+            self.log(f"  ✓ キャプション区分: 既に「{cur}」")
+            return True
+
+        for attempt in range(1, 3):
+            try:
+                # ポップアップを開く
+                self._page.evaluate("""
+                    () => {
+                        const inp = document.querySelector('input#jscSelectPop');
+                        if (!inp) return;
+                        inp.scrollIntoView({behavior: 'instant', block: 'center'});
+                        inp.dispatchEvent(new MouseEvent('click',
+                            {bubbles: true, cancelable: true, view: window}));
+                    }
+                """)
+                time.sleep(0.5)
+                result = self._page.evaluate(self.SELECT_POPUP_JS, category)
+            except Exception as e:
+                self.log(f"  ✗ キャプション区分の選択でエラー: {e}")
+                return False
+
+            if result and result.startswith("ok:"):
+                time.sleep(0.5)
+                cur = self._yoko_state().get("category", "")
+                if cur == category:
+                    self.log(f"  ✓ キャプション区分: {category}")
+                    return True
+                self.log(f"  ⚠ 選択したが反映されていません（現在: {cur or '空'}）")
+            elif result == "nobox":
+                self.log(f"  ⚠ キャプション区分のポップアップが開きませんでした（{attempt}回目）")
+            elif result == "noitems":
+                self.log("  ✗ ポップアップに選択肢がありません")
+                return False
+            elif result and result.startswith("notfound:"):
+                self.log(f"  ✗ 「{category}」が選択肢にありません → {result[9:]}")
+                return False
+            time.sleep(0.5)
+
+        return False
+
+    def _save_yoko(self) -> bool:
+        """「登録・保存」を押す。disabled が外れるまで待ってから押す。"""
+        # 画像とカテゴリが揃うまでボタンは disabled のまま（クリックしても無反応）
+        for _ in range(20):              # 最大10秒
+            if self._yoko_state().get("save_enabled"):
+                break
+            time.sleep(0.5)
+        else:
+            st = self._yoko_state()
+            self.log("  ✗ 「登録・保存」ボタンが押せる状態になりません（disabled のまま）")
+            self.log(f"      画像: {'あり' if st.get('has_image') else 'なし'} / "
+                     f"カテゴリ: {st.get('category') or '未選択'} / "
+                     f"説明文: {(st.get('caption') or '空')[:20]}")
+            self._dump_yoko_state("保存できない状態")
             return False
+
+        self._page.on("dialog", self._accept_dialog)
+        if not self._click_first(self._page, self.DOUGA_SAVE_SELECTORS, "登録・保存"):
+            self.log("  ✗ 「登録・保存」ボタンが見つかりません")
+            self._dump_screen("動画・CMタブ")
+            return False
+
+        self.log("  … 保存中")
+        try:
+            self._page.wait_for_load_state("networkidle", timeout=60000)
+        except Exception:
+            pass
+        time.sleep(2.0)
+        self.log("  ✓ 横画像を保存しました")
+        return True
+
+    def _yoko_state(self) -> dict:
+        """横画像まわりの入力状態を1回のJSでまとめて取る"""
+        try:
+            return self._page.evaluate("""
+                () => {
+                    const cat  = document.querySelector('input#jscSelectPop');
+                    const cap  = document.querySelector("textarea[name='yokoCaption']");
+                    const save = document.querySelector('a#linkSubBtn');
+                    const file = document.querySelector('input#a07');
+                    // 「画像が登録されていません」の枠が表示されていれば未登録
+                    const noimg = document.querySelector('.jscNoImageBox');
+                    const noimgShown = !!(noimg && getComputedStyle(noimg).display !== 'none');
+                    return {
+                        category: cat ? (cat.value || '').trim() : '',
+                        caption:  cap ? (cap.value || '').trim() : '',
+                        has_image: !noimgShown,
+                        file_selected: !!(file && file.files && file.files.length > 0),
+                        save_enabled: !!(save && !save.hasAttribute('disabled')
+                                         && !save.classList.contains('btnImgGray')),
+                    };
+                }
+            """) or {}
+        except Exception:
+            return {}
+
+    def _dump_yoko_state(self, why: str):
+        st = self._yoko_state()
+        self.log(f"  [調査] {why}")
+        self.log(f"      画像あり      : {st.get('has_image')}")
+        self.log(f"      ファイル選択済: {st.get('file_selected')}")
+        self.log(f"      カテゴリ      : {st.get('category') or '(空)'}")
+        self.log(f"      説明文        : {(st.get('caption') or '(空)')[:30]}")
+        self.log(f"      保存ボタン    : {'押せる' if st.get('save_enabled') else 'disabled'}")
+        self._dump_screen("動画・CMタブ")
 
     # ------------------------------------------------------------------
     # 共通ヘルパー
@@ -341,18 +482,41 @@ class SuumoAutomation(AutomationBase):
         except Exception:
             pass
 
-    def _click_first(self, page, selectors, label: str) -> bool:
-        """候補セレクタを順に試し、最初に押せたものでクリックする"""
-        for sel in selectors:
-            try:
-                loc = page.locator(sel).first
-                if loc.count() > 0 and loc.is_visible(timeout=2000):
+    def _click_first(self, page, selectors, label: str, wait_enabled: float = 10.0) -> bool:
+        """候補セレクタを順に試し、最初に押せたものでクリックする。
+
+        SUUMOの保存ボタンは <a disabled="disabled" class="btnImgGray"> の形で
+        無効化される。見た目は表示されているのでクリック自体は通ってしまい、
+        押せたつもりで先に進む事故になる。無効の間は待ち、それでも
+        有効にならなければ失敗として返す。
+        """
+        deadline = time.time() + wait_enabled
+        while True:
+            for sel in selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if loc.count() == 0 or not loc.is_visible(timeout=2000):
+                        continue
+                    disabled = page.evaluate("""
+                        (s) => {
+                            const el = document.querySelector(s);
+                            if (!el) return true;
+                            return el.hasAttribute('disabled')
+                                || el.classList.contains('btnImgGray')
+                                || el.getAttribute('aria-disabled') === 'true';
+                        }
+                    """, sel)
+                    if disabled:
+                        continue
                     loc.click(timeout=8000)
                     self.log(f"  ✓ 「{label}」をクリック（{sel}）")
                     return True
-            except Exception:
-                continue
-        return False
+                except Exception:
+                    continue
+            if time.time() >= deadline:
+                return False
+            self.log(f"  … 「{label}」が押せる状態になるのを待っています")
+            time.sleep(1.0)
 
     def _dump_screen(self, where: str, page=None):
         """セレクタが見つからないときに、画面の入力欄・ボタンをログに出す（原因調査用）"""
@@ -492,58 +656,7 @@ class SuumoAutomation(AutomationBase):
 
             # ③ JS でポップアップ内の一致する項目を探してクリック
             #    Playwright の visibility チェックを使わず JS で完結させることで確実に動作
-            result = self._page.evaluate("""
-                (target) => {
-                    function norm(s) {
-                        return s.replace(/[\\uFF01-\\uFF5E]/g,
-                            c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
-                        ).replace(/\\u3000/g, ' ')
-                         .replace(/^[★▲△■☆※◆◇●○]+/, '')
-                         .trim();
-                    }
-                    const normTarget = norm(target);
-
-                    // 表示中のポップアップを探す
-                    const box = [
-                        'div#jsiSelectPopBoxUC',
-                        'div#jsiSelectPopBox',
-                        'ul#jsiSelectContentsUc',
-                        'ul#jsiSelectContents'
-                    ].map(s => document.querySelector(s))
-                     .find(el => el && getComputedStyle(el).display !== 'none');
-                    if (!box) return 'nobox';
-
-                    // li → span.jscSelectText → span:not(.dn) → li全体 の順でテキスト取得
-                    const items = Array.from(box.querySelectorAll('li'));
-                    const opts = [];
-                    for (const li of items) {
-                        const txtSpan = li.querySelector('span.jscSelectText')
-                                     || Array.from(li.querySelectorAll('span'))
-                                            .find(s => !s.classList.contains('dn') && s.textContent.trim());
-                        const raw = (txtSpan ? txtSpan.textContent : li.textContent).trim();
-                        opts.push(raw);
-                        if (norm(raw) === normTarget) {
-                            li.click();
-                            return 'ok:' + raw;
-                        }
-                    }
-
-                    // li が空なら a タグも試す
-                    if (items.length === 0) {
-                        for (const a of box.querySelectorAll('a')) {
-                            const raw = a.textContent.trim();
-                            opts.push(raw);
-                            if (norm(raw) === normTarget) {
-                                a.click();
-                                return 'ok:' + raw;
-                            }
-                        }
-                    }
-
-                    if (opts.length === 0) return 'noitems';
-                    return 'notfound:' + JSON.stringify(opts.slice(0, 20));
-                }
-            """, target)
+            result = self._page.evaluate(self.SELECT_POPUP_JS, target)
 
             if result and result.startswith('ok:'):
                 time.sleep(0.2)
